@@ -1,0 +1,13 @@
+[package]
+name = "miss-demeanor"
+version = "0.1.0"
+authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
+
+[dependencies]
+futures = "*"
+getopts = "*"
+hyper = "*"
+hyper-tls = { git = "https://github.com/hyperium/hyper-tls", branch = "master" }
+native-tls = "*"
+tokio = "*"
+tokio-io = "*"
