@@ -41,12 +41,25 @@ impl WebhookServer {
         if let Some(ident) = self.1 {
             tls_acceptor = native_tls::TlsAcceptor::new(ident).ok();
         }
-        for sock in TcpListener::bind(addr_string)?.incoming() {
+        for sock_result in TcpListener::bind(addr_string)?.incoming() {
+            let sock = match sock_result {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("{}", e);
+                    continue;
+                },
+            };
             let stream = if let Some(ref mut acceptor) = tls_acceptor.as_mut() {
-                let tls_stream = acceptor.accept(AllowStdIo::new(sock?))?;
+                let tls_stream = match acceptor.accept(AllowStdIo::new(sock)) {
+                    Ok(ts) => ts,
+                    Err(e) => {
+                        error!("{}", e);
+                        continue;
+                    },
+                };
                 hyper_tls::MaybeHttpsStream::from(tls_stream)
             } else {
-                hyper_tls::MaybeHttpsStream::from(AllowStdIo::new(sock?))
+                hyper_tls::MaybeHttpsStream::from(AllowStdIo::new(sock))
             };
             self.0.spawn(Http::new().serve_connection(stream, hyper::service::service_fn(self.2))
                          .map_err(|_| ()));

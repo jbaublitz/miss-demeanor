@@ -1,0 +1,7 @@
+[[trigger]]
+name = "github"
+path = "/test/endpoint"
+
+[[checker]]
+name = "jira"
+strict_evaluation = true
