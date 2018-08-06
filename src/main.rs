@@ -6,6 +6,9 @@ extern crate hyper_tls;
 #[macro_use]
 extern crate log;
 extern crate native_tls;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 extern crate tokio;
 extern crate tokio_io;
 extern crate toml;
@@ -53,14 +56,21 @@ fn parse_opts() -> Result<Args, Box<Error>> {
 
 fn main() {
     env_logger::Builder::new().filter_level(log::LevelFilter::Info).init();
-    let config = match parse_opts() {
+    let args = match parse_opts() {
         Ok(cfg) => cfg,
         Err(e) => {
             println!("{}", e);
             process::exit(1);
         }
     };
-    let server = match webhook::WebhookServer::new(config.use_tls, |_req| {
+    let config = match config::parse_config(args.config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("{}", e);
+            process::exit(1);
+        }
+    };
+    let server = match webhook::WebhookServer::new(args.use_tls, |_req| {
         Ok(hyper::Response::new(hyper::Body::from("This is a test")))
     }) {
         Ok(s) => s,

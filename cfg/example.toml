@@ -1,7 +1,13 @@
-[[trigger]]
+[[triggers]]
 name = "github"
-path = "/test/endpoint"
+type = "webook"
+url_path = "/test/endpoint"
 
-[[checker]]
+[[checkers]]
 name = "jira"
+retry_strategy = "linear"
 strict_evaluation = true
+
+[[handlers]]
+name = "slack"
+retry_strategy = "linear"

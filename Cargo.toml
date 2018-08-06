@@ -11,6 +11,8 @@ hyper = "*"
 hyper-tls = { git = "https://github.com/hyperium/hyper-tls", branch = "master" }
 log = "*"
 native-tls = "*"
+serde = "*"
+serde_derive = "*"
 tokio = "*"
 tokio-io = "*"
 toml = "*"
