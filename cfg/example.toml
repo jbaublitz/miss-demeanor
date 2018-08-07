@@ -1,7 +1,9 @@
+trigger_type = "unix_socket"
+listen_addr = "/home/jbaublitz/miss-demeanor"
+
 [[triggers]]
 name = "github"
-type = "webook"
-url_path = "/test/endpoint"
+url_path = "/test"
 
 [[checkers]]
 name = "jira"

@@ -22,7 +22,6 @@ use std::process;
 
 pub struct Args {
     pub use_tls: webhook::UseTls,
-    pub addr: String,
     pub config_path: String,
 }
 
@@ -31,7 +30,6 @@ fn parse_opts() -> Result<Args, Box<Error>> {
     let mut options = getopts::Options::new();
     let matches = options.optopt("p", "identity-pass", "Password for SSL identity", "PASSWORD")
         .optopt("f", "identity-file", "Path to SSL pkcs12 identity file", "FILE_PATH")
-        .optopt("a", "bind-address", "Address on which to listen", "ADDR:PORT")
         .optopt("c", "config-path", "Path to config file", "PATH")
         .parse(args[1..].iter())?;
     let use_tls = match (matches.opt_str("f"), matches.opt_str("p")) {
@@ -40,11 +38,6 @@ fn parse_opts() -> Result<Args, Box<Error>> {
     };
     let args = Args {
         use_tls,
-        addr: matches.opt_str("a").unwrap_or_else(|| {
-            let addr = "0.0.0.0:8080";
-            info!("Defaulting to {}", addr);
-            addr.to_string()
-        }),
         config_path: matches.opt_str("c").unwrap_or_else(|| {
             let path = "/etc/miss-demeanor/config.toml";
             info!("Defaulting to {}", path);
@@ -59,25 +52,31 @@ fn main() {
     let args = match parse_opts() {
         Ok(cfg) => cfg,
         Err(e) => {
-            println!("{}", e);
+            error!("{}", e);
             process::exit(1);
         }
     };
     let config = match config::parse_config(args.config_path) {
         Ok(c) => c,
         Err(e) => {
-            println!("{}", e);
+            error!("{}", e);
             process::exit(1);
         }
     };
-    let server = match webhook::WebhookServer::new(args.use_tls, |_req| {
+    let server = match webhook::WebhookServer::new(config, args.use_tls, |_req| {
         Ok(hyper::Response::new(hyper::Body::from("This is a test")))
     }) {
         Ok(s) => s,
         Err(e) => {
-            println!("{}", e);
+            error!("{}", e);
             process::exit(1);
         }
     };
-    server.serve("localhost:8080".to_string()).unwrap();
+    match server.serve() {
+        Ok(()) => (),
+        Err(e) => {
+            error!("{}", e);
+            process::exit(1);
+        }
+    };
 }

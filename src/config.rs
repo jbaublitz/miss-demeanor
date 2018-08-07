@@ -8,28 +8,8 @@ use serde::Deserialize;
 use toml;
 
 #[derive(Deserialize,PartialEq,Eq)]
-#[serde(from="String")]
-pub enum TriggerType {
-    Webhook,
-    UnixSocket,
-    UnknownTriggerType,
-}
-
-impl From<String> for TriggerType {
-    fn from(v: String) -> Self {
-        match v.as_str() {
-            "webhook" => TriggerType::Webhook,
-            "unix_socket" => TriggerType::UnixSocket,
-            _ => TriggerType::UnknownTriggerType,
-        }
-    }
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
 pub struct Trigger {
     pub name: String,
-    #[serde(rename = "type")]
-    pub trigger_type: TriggerType,
     pub url_path: String,
 }
 
@@ -82,8 +62,28 @@ impl Hash for Handler {
     }
 }
 
+#[derive(Deserialize,PartialEq,Eq)]
+#[serde(from="String")]
+pub enum TriggerType {
+    Webhook,
+    UnixSocket,
+    UnknownTriggerType,
+}
+
+impl From<String> for TriggerType {
+    fn from(v: String) -> Self {
+        match v.as_str() {
+            "webhook" => TriggerType::Webhook,
+            "unix_socket" => TriggerType::UnixSocket,
+            _ => TriggerType::UnknownTriggerType,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct TomlConfig {
+    pub trigger_type: TriggerType,
+    pub listen_addr: String,
     pub triggers: HashSet<Trigger>,
     pub checkers: HashSet<Checker>,
     pub handlers: HashSet<Handler>,
