@@ -1,5 +1,5 @@
-trigger_type = "unix_socket"
-listen_addr = "/home/jbaublitz/miss-demeanor"
+trigger_type = "webhook"
+listen_addr = "127.0.0.1:8080"
 
 [[triggers]]
 name = "github"
