@@ -8,18 +8,6 @@ use serde::Deserialize;
 use toml;
 
 #[derive(Deserialize,PartialEq,Eq)]
-pub struct Trigger {
-    pub name: String,
-    pub url_path: String,
-}
-
-impl Hash for Trigger {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
-        self.name.hash(state)
-    }
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
 #[serde(from="String")]
 pub enum RetryStrategy {
     Linear,
@@ -34,31 +22,6 @@ impl From<String> for RetryStrategy {
             "exponential" => RetryStrategy::Exponential,
             _ => RetryStrategy::UnknownStrategy,
         }
-    }
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
-pub struct Checker {
-    pub name: String,
-    pub retry_strategy: RetryStrategy,
-    pub strict_evaluation: bool,
-}
-
-impl Hash for Checker {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
-        self.name.hash(state)
-    }
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
-pub struct Handler {
-    pub name: String,
-    pub retry_strategy: RetryStrategy,
-}
-
-impl Hash for Handler {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
-        self.name.hash(state)
     }
 }
 
@@ -80,10 +43,73 @@ impl From<String> for TriggerType {
     }
 }
 
-#[derive(Deserialize)]
-pub struct TomlConfig {
+#[derive(Deserialize,PartialEq,Eq)]
+#[serde(from="String")]
+pub enum PluginType {
+    Python,
+    Ruby,
+    CABI,
+    UnknownPluginType,
+}
+
+impl From<String> for PluginType {
+    fn from(v: String) -> Self {
+        match v.as_str() {
+            "python" => PluginType::Python,
+            "ruby" => PluginType::Ruby,
+            "c_abi" => PluginType::CABI,
+            _ => PluginType::UnknownPluginType,
+        }
+    }
+}
+
+#[derive(Deserialize,PartialEq,Eq)]
+pub struct Trigger {
+    pub name: String,
+    pub plugin_type: PluginType,
     pub trigger_type: TriggerType,
     pub listen_addr: String,
+    pub url_path: String,
+    pub plugin_path: String,
+}
+
+impl Hash for Trigger {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.name.hash(state)
+    }
+}
+
+#[derive(Deserialize,PartialEq,Eq)]
+pub struct Checker {
+    pub name: String,
+    pub plugin_type: PluginType,
+    pub retry_strategy: RetryStrategy,
+    pub strict_evaluation: bool,
+    pub plugin_path: String,
+}
+
+impl Hash for Checker {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.name.hash(state)
+    }
+}
+
+#[derive(Deserialize,PartialEq,Eq)]
+pub struct Handler {
+    pub name: String,
+    pub plugin_type: PluginType,
+    pub retry_strategy: RetryStrategy,
+    pub plugin_path: String,
+}
+
+impl Hash for Handler {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.name.hash(state)
+    }
+}
+
+#[derive(Deserialize)]
+pub struct TomlConfig {
     pub triggers: HashSet<Trigger>,
     pub checkers: HashSet<Checker>,
     pub handlers: HashSet<Handler>,

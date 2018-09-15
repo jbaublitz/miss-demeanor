@@ -1,0 +1,15 @@
+[package]
+name = "miss-demeanor-pluginutils"
+version = "0.1.0"
+authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
+
+[lib]
+name = "miss_demeanor_pluginutils"
+
+[dependencies]
+libc = "*"
+hyper = "*"
+tokio = "*"
+
+[features]
+rust = []

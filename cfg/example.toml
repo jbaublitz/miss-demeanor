@@ -1,15 +1,20 @@
-trigger_type = "webhook"
-listen_addr = "127.0.0.1:8080"
-
 [[triggers]]
 name = "github"
+plugin_type = "c_abi"
+plugin_path = "./target/release/github.so"
+trigger_type = "webhook"
+listen_addr = "127.0.0.1:8080"
 url_path = "/test"
 
 [[checkers]]
 name = "jira"
+plugin_type = "c_abi"
+plugin_path = "./target/release/jira.so"
 retry_strategy = "linear"
 strict_evaluation = true
 
 [[handlers]]
 name = "slack"
+plugin_type = "c_abi"
+plugin_path = "./target/release/slack.so"
 retry_strategy = "linear"

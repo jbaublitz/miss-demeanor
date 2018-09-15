@@ -3,6 +3,8 @@ extern crate futures;
 extern crate getopts;
 extern crate hyper;
 extern crate hyper_tls;
+extern crate libc;
+extern crate libloading;
 #[macro_use]
 extern crate log;
 extern crate native_tls;
@@ -11,14 +13,21 @@ extern crate serde;
 extern crate serde_derive;
 extern crate tokio;
 extern crate tokio_io;
+extern crate tokio_threadpool;
 extern crate toml;
 
 mod config;
+mod err;
+mod plugins;
 mod webhook;
 
 use std::env;
 use std::error::Error;
+use std::fs::File;
+use std::io::Read;
 use std::process;
+
+use plugins::PluginManager;
 
 pub struct Args {
     pub use_tls: webhook::UseTls,
@@ -33,7 +42,12 @@ fn parse_opts() -> Result<Args, Box<Error>> {
         .optopt("c", "config-path", "Path to config file", "PATH")
         .parse(args[1..].iter())?;
     let use_tls = match (matches.opt_str("f"), matches.opt_str("p")) {
-        (Some(file), Some(pw)) => webhook::UseTls::Yes(file, pw),
+        (Some(file_path), Some(pw)) => {
+            let mut file_handle = File::open(file_path)?;
+            let mut pkcs12 = Vec::new();
+            file_handle.read_to_end(&mut pkcs12)?;
+            webhook::UseTls::Yes(webhook::TlsIdentity::new(pkcs12, pw))
+        },
         (_, _) => webhook::UseTls::No,
     };
     let args = Args {
@@ -63,16 +77,21 @@ fn main() {
             process::exit(1);
         }
     };
-    let server = match webhook::WebhookServer::new(config, args.use_tls, |_req| {
-        Ok(hyper::Response::new(hyper::Body::from("This is a test")))
-    }) {
+    let plugin_manager = match PluginManager::new(&config) {
+        Ok(pm) => pm,
+        Err(e) => {
+            error!("{}", e);
+            process::exit(1);
+        }
+    };
+    let server = match webhook::WebhookServer::new(args.use_tls, plugin_manager) {
         Ok(s) => s,
         Err(e) => {
             error!("{}", e);
             process::exit(1);
         }
     };
-    match server.serve() {
+    match server.serve(config) {
         Ok(()) => (),
         Err(e) => {
             error!("{}", e);
