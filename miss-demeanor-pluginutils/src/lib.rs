@@ -6,7 +6,7 @@ use std::ffi::CStr;
 use std::ptr;
 use std::slice;
 
-use hyper::{Body,Request};
+use hyper::{Body,Request,Response,StatusCode};
 use hyper::rt::Stream;
 use tokio::runtime::Runtime;
 
@@ -66,5 +66,58 @@ pub fn hyper_request_get_header(req: *mut Request<Body>, key: *const libc::c_cha
         }
     } else {
         ptr::null()
+    }
+}
+
+#[no_mangle]
+pub fn hyper_response_code(req: *mut Response<Body>, status: u16) -> libc::c_int {
+    if let Some(r) = unsafe { req.as_mut() } {
+        *r.status_mut() = if let Ok(sc) = StatusCode::from_u16(status) {
+            sc
+        } else {
+            return -1;
+        };
+        0
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub fn hyper_response_add_header(req: *mut Response<Body>, key: *const libc::c_char, key_len: usize,
+                                 value: *const libc::c_char, value_len: usize) -> libc::c_int {
+    let key_bytes = unsafe { slice::from_raw_parts(key as *const u8, key_len) };
+    let value_bytes = unsafe { slice::from_raw_parts(value as *const u8, value_len) };
+    let (key_str, value_str) = if let (Ok(k), Ok(v)) = (CStr::from_bytes_with_nul(key_bytes),
+            CStr::from_bytes_with_nul(value_bytes)) {
+        if let (Ok(key_st), Ok(value_st)) = (k.to_str(), v.to_str()) {
+            (key_st, value_st)
+        } else {
+            return -1;
+        }
+    } else {
+        return -1;
+    };
+    let header_value = if let Ok(v) = value_str.parse() {
+        v
+    } else {
+        return -1;
+    };
+    if let Some(r) = unsafe { req.as_mut() } {
+        r.headers_mut().insert(key_str, header_value);
+        0
+    } else {
+        -1
+    }
+}
+
+#[no_mangle]
+pub fn hyper_response_body(req: *mut Response<Body>, body: *const u8, body_len: usize) -> libc::c_int {
+    let body_bytes = unsafe { slice::from_raw_parts(body, body_len) };
+    if let Some(r) = unsafe { req.as_mut() } {
+        *r.body_mut() = Body::from(body_bytes);
+        0
+    } else {
+        -1
     }
 }
