@@ -7,6 +7,7 @@ authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
 env_logger = "*"
 futures = "*"
 getopts = "*"
+http = "*"
 hyper = "*"
 hyper-tls = { git = "https://github.com/hyperium/hyper-tls", branch = "master" }
 libc = "*"

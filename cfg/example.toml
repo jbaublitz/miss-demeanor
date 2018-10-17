@@ -1,20 +1,44 @@
-[[triggers]]
-name = "github"
-plugin_type = "c_abi"
-plugin_path = "./target/release/github.so"
-trigger_type = "webhook"
+[[servers]]
+server_type = "webhook"
 listen_addr = "127.0.0.1:8080"
-url_path = "/test"
+use_tls = true
+
+[[servers.endpoints]]
+path = "/pr"
+trigger_name = "github-pr"
+
+[[servers.endpoints]]
+path = "/merged"
+trigger_name = "github-merged"
+
+[[triggers]]
+name = "github-merged"
+next_plugin = "http_post"
+plugin_type = "ruby"
+plugin_path = "./github-merged.rb"
+
+[[triggers]]
+name = "github-pr"
+next_plugin = "jira"
+plugin_type = "ruby"
+plugin_path = "./github-pr.rb"
 
 [[checkers]]
 name = "jira"
-plugin_type = "c_abi"
-plugin_path = "./target/release/jira.so"
+next_plugin = "github-handler"
+plugin_type = "ruby"
+plugin_path = "./jira.rb"
 retry_strategy = "linear"
 strict_evaluation = true
 
 [[handlers]]
-name = "slack"
-plugin_type = "c_abi"
-plugin_path = "./target/release/slack.so"
+name = "http_post"
+plugin_type = "ruby"
+plugin_path = "./http_post.rb"
+retry_strategy = "linear"
+
+[[handlers]]
+name = "github-handler"
+plugin_type = "ruby"
+plugin_path = "./github.rb"
 retry_strategy = "linear"

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Debug;
 use std::io::{self,Read,Write};
@@ -6,8 +7,9 @@ use std::os::unix::net::UnixStream;
 use std::process;
 use std::sync::Arc;
 
+use http;
 use hyper;
-use hyper::{Body,Response};
+use hyper::{Body,Request,Response};
 use hyper::server::conn::Http;
 use hyper_tls;
 use native_tls;
@@ -58,20 +60,25 @@ pub struct WebhookServer {
     plugin_manager: Arc<PluginManager>,
 }
 
-fn spawn_server<S>(manager: Arc<PluginManager>, plugin_name: Arc<String>, stream: S)
+fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::Endpoint>>, stream: S)
         where S: 'static + AsyncRead + AsyncWrite + Send {
     tokio::spawn(lazy(move || {
         Http::new().serve_connection(stream,
-            hyper::service::service_fn(move |req| {
-                let result: Result<Response<Body>, hyper::Error>;
-                result = Ok(manager.run_trigger(plugin_name.as_ref(), req)
-                                .unwrap_or_else(|e| {
-                    error!("Error executing plugin {}: {}", plugin_name, e);
-                    let mut builder = Response::builder();
-                    builder.status(500).body(Body::from("Oops! Something went wrong."))
-                        .expect("UNREACHABLE PANIC - Please file a bug report")
-                }));
-                result
+            hyper::service::service_fn(move |req: Request<Body>| -> Result<Response<Body>, http::Error> {
+                let path = req.uri().path().to_string();
+                let plugin_name = match endpoints.get(&path).and_then(|epoint| Some(&epoint.trigger_name)) {
+                    Some(trigger_name) => trigger_name,
+                    None => {
+                        let mut resp = Response::builder();
+                        resp.status(404);
+                        return resp.body(Body::from("Endpoint does not exist"))
+                    }
+                };
+                manager.run_trigger(&plugin_name, req).and_then(|(name, resp, ptr)| {
+                    manager.run_checker(name, resp, ptr)
+                }).and_then(|(name, resp, b, ptr)| {
+                    manager.run_handler(name, resp, b, ptr)
+                }).or_else(|e| Ok(e.to_response()))
             })
         ).map_err(|e| {
             error!("Failed to serve HTTP request: {}", e);
@@ -82,11 +89,11 @@ fn spawn_server<S>(manager: Arc<PluginManager>, plugin_name: Arc<String>, stream
 
 fn listen<L, S, E>(plugin_manager: Arc<PluginManager>,
                    mut tls_acceptor: Option<Arc<native_tls::TlsAcceptor>>,
-                   trigger: config::Trigger) -> Result<(), Box<Error>>
+                   server: config::Server) -> Result<(), Box<Error>>
         where L: Listener<S, E>, S: 'static + Read + Write + Debug + Send, E: 'static + Error {
-    let trigger_name = Arc::new(trigger.name);
-    let trigger_addr = trigger.listen_addr;
-    let listener = L::bind(trigger_addr)?;
+    let server_addr = server.listen_addr;
+    let listener = L::bind(server_addr)?;
+    let endpoints = Arc::new(server.endpoints);
     for sock_result in listener {
         let sock = sock_result?;
         let stream = if let Some(ref mut acceptor) = tls_acceptor.as_mut() {
@@ -95,7 +102,7 @@ fn listen<L, S, E>(plugin_manager: Arc<PluginManager>,
         } else {
             hyper_tls::MaybeHttpsStream::from(AllowStdIo::new(sock))
         };
-        spawn_server(Arc::clone(&plugin_manager), Arc::clone(&trigger_name), stream)
+        spawn_server(Arc::clone(&plugin_manager), Arc::clone(&endpoints), stream)
     }
     Ok(())
 }
@@ -110,7 +117,7 @@ impl WebhookServer {
             plugin_manager: Arc::new(plugin_manager) })
     }
 
-    fn spawn_listener<L, S, E>(&self, trigger: config::Trigger) -> Result<(), Box<Error>>
+    fn spawn_listener<L, S, E>(&self, server: config::Server) -> Result<(), Box<Error>>
             where L: Listener<S, E>, S: 'static + Read + Write + Debug + Send, E: 'static + Error {
         let mut tls_acceptor = None;
         if let Some(ref ident) = self.identity {
@@ -119,7 +126,7 @@ impl WebhookServer {
         let plugin_manager = Arc::clone(&self.plugin_manager); 
 
         self.pool.spawn(lazy(move || {
-            listen::<L, S, E>(plugin_manager, tls_acceptor, trigger).map_err(|e| {
+            listen::<L, S, E>(plugin_manager, tls_acceptor, server).map_err(|e| {
                 error!("{}", e);
                 ()
             })
@@ -129,16 +136,16 @@ impl WebhookServer {
     }
 
     pub fn serve<'a>(self, config: TomlConfig) -> Result<(), Box<Error>> {
-        for trigger in config.triggers.into_iter() {
-            match trigger.trigger_type {
-                config::TriggerType::Webhook => {
-                    self.spawn_listener::<TcpListener, TcpStream, io::Error>(trigger)?
+        for server in config.servers.into_iter() {
+            match server.server_type {
+                config::ServerType::Webhook => {
+                    self.spawn_listener::<TcpListener, TcpStream, io::Error>(server)?
                 }
-                config::TriggerType::UnixSocket => {
-                    self.spawn_listener::<UnixListener, UnixStream, io::Error>(trigger)?
+                config::ServerType::UnixSocket => {
+                    self.spawn_listener::<UnixListener, UnixStream, io::Error>(server)?
                 },
-                config::TriggerType::UnknownTriggerType => {
-                    error!("Trigger type not recognized - exiting");
+                config::ServerType::UnknownServerType => {
+                    error!("Server type not recognized - exiting");
                     process::exit(1);
                 }
             };

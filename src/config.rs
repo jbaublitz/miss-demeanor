@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs::File;
@@ -27,18 +28,18 @@ impl From<String> for RetryStrategy {
 
 #[derive(Deserialize,PartialEq,Eq)]
 #[serde(from="String")]
-pub enum TriggerType {
+pub enum ServerType {
     Webhook,
     UnixSocket,
-    UnknownTriggerType,
+    UnknownServerType,
 }
 
-impl From<String> for TriggerType {
+impl From<String> for ServerType {
     fn from(v: String) -> Self {
         match v.as_str() {
-            "webhook" => TriggerType::Webhook,
-            "unix_socket" => TriggerType::UnixSocket,
-            _ => TriggerType::UnknownTriggerType,
+            "webhook" => ServerType::Webhook,
+            "unix_socket" => ServerType::UnixSocket,
+            _ => ServerType::UnknownServerType,
         }
     }
 }
@@ -64,24 +65,56 @@ impl From<String> for PluginType {
 }
 
 #[derive(Deserialize,PartialEq,Eq)]
+pub struct Server {
+    pub server_type: ServerType,
+    pub listen_addr: String,
+    pub use_tls: bool,
+    pub endpoints: HashSet<Endpoint>,
+}
+
+impl Hash for Server {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.listen_addr.hash(state)
+    }
+}
+
+#[derive(Deserialize,PartialEq,Eq)]
+pub struct Endpoint {
+    pub path: String,
+    pub trigger_name: String,
+}
+
+impl Borrow<String> for Endpoint {
+    fn borrow(&self) -> &String {
+        &self.path
+    }
+}
+
+impl Hash for Endpoint {
+    fn hash<H>(&self, state: &mut H) where H: Hasher {
+        self.path.hash(state)
+    }
+}
+
+#[derive(Deserialize,PartialEq,Eq)]
 pub struct Trigger {
     pub name: String,
+    pub next_plugin: String,
     pub plugin_type: PluginType,
-    pub trigger_type: TriggerType,
-    pub listen_addr: String,
     pub url_path: String,
     pub plugin_path: String,
 }
 
 impl Hash for Trigger {
     fn hash<H>(&self, state: &mut H) where H: Hasher {
-        self.name.hash(state)
+        self.url_path.hash(state)
     }
 }
 
 #[derive(Deserialize,PartialEq,Eq)]
 pub struct Checker {
     pub name: String,
+    pub next_plugin: String,
     pub plugin_type: PluginType,
     pub retry_strategy: RetryStrategy,
     pub strict_evaluation: bool,
@@ -110,6 +143,7 @@ impl Hash for Handler {
 
 #[derive(Deserialize)]
 pub struct TomlConfig {
+    pub servers: HashSet<Server>,
     pub triggers: HashSet<Trigger>,
     pub checkers: HashSet<Checker>,
     pub handlers: HashSet<Handler>,

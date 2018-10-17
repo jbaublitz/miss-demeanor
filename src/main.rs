@@ -1,6 +1,7 @@
 extern crate env_logger;
 extern crate futures;
 extern crate getopts;
+extern crate http;
 extern crate hyper;
 extern crate hyper_tls;
 extern crate libc;
@@ -70,14 +71,14 @@ fn main() {
             process::exit(1);
         }
     };
-    let config = match config::parse_config(args.config_path) {
+    let mut config = match config::parse_config(args.config_path) {
         Ok(c) => c,
         Err(e) => {
             error!("{}", e);
             process::exit(1);
         }
     };
-    let plugin_manager = match PluginManager::new(&config) {
+    let plugin_manager = match PluginManager::new(&mut config) {
         Ok(pm) => pm,
         Err(e) => {
             error!("{}", e);
