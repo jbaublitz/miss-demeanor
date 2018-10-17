@@ -69,7 +69,7 @@ impl PluginManager {
             };
             checker_hm.insert(plugin_def.name.clone(), plugin);
         }
-        
+
         let mut handler_hm = HashMap::new();
         for plugin_def in config.handlers.drain() {
             let plugin = Plugin {
