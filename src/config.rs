@@ -99,15 +99,15 @@ impl Hash for Endpoint {
 #[derive(Deserialize,PartialEq,Eq)]
 pub struct Trigger {
     pub name: String,
+    pub use_checker: bool,
     pub next_plugin: String,
     pub plugin_type: PluginType,
-    pub url_path: String,
     pub plugin_path: String,
 }
 
 impl Hash for Trigger {
     fn hash<H>(&self, state: &mut H) where H: Hasher {
-        self.url_path.hash(state)
+        self.name.hash(state)
     }
 }
 

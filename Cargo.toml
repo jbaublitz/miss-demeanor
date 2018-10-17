@@ -9,7 +9,7 @@ futures = "*"
 getopts = "*"
 http = "*"
 hyper = "*"
-hyper-tls = { git = "https://github.com/hyperium/hyper-tls", branch = "master" }
+hyper-tls = "0.3.0"
 libc = "*"
 libloading = "*"
 log = "*"

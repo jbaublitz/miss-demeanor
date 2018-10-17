@@ -13,12 +13,14 @@ trigger_name = "github-merged"
 
 [[triggers]]
 name = "github-merged"
+use_checker = false
 next_plugin = "http_post"
 plugin_type = "ruby"
 plugin_path = "./github-merged.rb"
 
 [[triggers]]
 name = "github-pr"
+use_checker = true
 next_plugin = "jira"
 plugin_type = "ruby"
 plugin_path = "./github-pr.rb"

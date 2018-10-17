@@ -17,8 +17,9 @@ impl PluginError {
         resp.status(code);
         let resp_final = resp.body(Body::from(body.to_string())).unwrap_or_else(|e| {
             error!("{}", e);
-            let mut resp = Response::new(Body::from("Whoops! Could not convert the error message an HTTP body -\
-                                                 check the logs."));
+            let mut resp = Response::new(Body::from("Whoops! Could not convert the error \
+                                                     message an HTTP body - \
+                                                     check the logs."));
             *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
             resp
         });
@@ -32,7 +33,7 @@ impl PluginError {
 
 impl Display for PluginError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", self.description())
+        write!(f, "{}", self)
     }
 }
 
