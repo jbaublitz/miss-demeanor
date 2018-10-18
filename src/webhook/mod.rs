@@ -61,25 +61,12 @@ fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::E
                     Some(pn) => pn,
                     None => return Ok(PluginError::new(404, "Endpoint not found").to_response()),
                 };
-                let first_plugin = match manager.trigger_plugins.get(first_plugin_name) {
-                    Some(fp) => fp,
-                    None => return Ok(PluginError::new(
-                        500, format!("Plugin {} not found", first_plugin_name)
-                    ).to_response()),
-                };
 
-                manager.run_trigger(first_plugin, req).and_then(|(name, resp, ptr)| {
-                    if let Some(plugin) = manager.checker_plugins.get(name) {
-                        manager.run_checker(plugin, resp, ptr)
-                    } else {
-                        Err(PluginError::new(500, format!("Plugin {} not found", name)))
-                    }
+                manager.exec_trigger_plugin(first_plugin_name, req)
+                        .and_then(|(name, resp, ptr)| {
+                    manager.exec_checker_plugin(name, resp, ptr)
                 }).and_then(|(name, resp, b, ptr)| {
-                    if let Some(plugin) = manager.handler_plugins.get(name) {
-                        manager.run_handler(plugin, resp, b, ptr)
-                    } else {
-                        Err(PluginError::new(500, format!("Plugin {} not found", name)))
-                    }
+                    manager.exec_handler_plugin(name, resp, b, ptr)
                 }).or_else(|e| Ok(e.to_response()))
             })
         ).map_err(|e| {

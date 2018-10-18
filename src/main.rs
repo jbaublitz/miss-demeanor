@@ -16,7 +16,6 @@ extern crate tokio;
 extern crate toml;
 
 mod config;
-mod err;
 mod plugins;
 mod webhook;
 

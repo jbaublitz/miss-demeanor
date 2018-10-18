@@ -8,6 +8,11 @@ use std::io::Read;
 use serde::Deserialize;
 use toml;
 
+pub trait PluginConfig {
+    fn get_plugin_type(&self) -> &PluginType;
+    fn get_plugin_path(&self) -> &str;
+}
+
 #[derive(Deserialize,PartialEq,Eq)]
 #[serde(from="String")]
 pub enum RetryStrategy {
@@ -105,6 +110,16 @@ pub struct Trigger {
     pub plugin_path: String,
 }
 
+impl PluginConfig for Trigger {
+    fn get_plugin_type(&self) -> &PluginType {
+        &self.plugin_type
+    }
+
+    fn get_plugin_path(&self) -> &str {
+        self.plugin_path.as_str()
+    }
+}
+
 impl Borrow<String> for Trigger {
     fn borrow(&self) -> &String {
         &self.name
@@ -127,6 +142,16 @@ pub struct Checker {
     pub plugin_path: String,
 }
 
+impl PluginConfig for Checker {
+    fn get_plugin_type(&self) -> &PluginType {
+        &self.plugin_type
+    }
+
+    fn get_plugin_path(&self) -> &str {
+        self.plugin_path.as_str()
+    }
+}
+
 impl Borrow<String> for Checker {
     fn borrow(&self) -> &String {
         &self.name
@@ -145,6 +170,16 @@ pub struct Handler {
     pub plugin_type: PluginType,
     pub retry_strategy: RetryStrategy,
     pub plugin_path: String,
+}
+
+impl PluginConfig for Handler {
+    fn get_plugin_type(&self) -> &PluginType {
+        &self.plugin_type
+    }
+
+    fn get_plugin_path(&self) -> &str {
+        self.plugin_path.as_str()
+    }
 }
 
 impl Borrow<String> for Handler {
