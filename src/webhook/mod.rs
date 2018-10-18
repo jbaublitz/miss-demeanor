@@ -18,7 +18,7 @@ use tokio::prelude::{Future,Stream};
 use tokio::prelude::future::lazy;
 
 use config::{self,TomlConfig};
-use plugins::PluginManager;
+use plugins::{PluginError,PluginManager};
 
 mod listener;
 use self::listener::Listener;
@@ -56,18 +56,30 @@ fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::E
         Http::new().serve_connection(stream,
             hyper::service::service_fn(move |req: Request<Body>| -> Result<Response<Body>, http::Error> {
                 let path = req.uri().path().to_string();
-                let plugin_name = match endpoints.get(&path).and_then(|epoint| Some(&epoint.trigger_name)) {
-                    Some(trigger_name) => trigger_name,
-                    None => {
-                        let mut resp = Response::builder();
-                        resp.status(404);
-                        return resp.body(Body::from("Endpoint does not exist"))
-                    }
+                let first_plugin_name = match endpoints.get(&path)
+                    .and_then(|endpoint| Some(&endpoint.trigger_name)) {
+                    Some(pn) => pn,
+                    None => return Ok(PluginError::new(404, "Endpoint not found").to_response()),
                 };
-                manager.run_trigger(&plugin_name, req).and_then(|(name, resp, ptr)| {
-                    manager.run_checker(name, resp, ptr)
+                let first_plugin = match manager.trigger_plugins.get(first_plugin_name) {
+                    Some(fp) => fp,
+                    None => return Ok(PluginError::new(
+                        500, format!("Plugin {} not found", first_plugin_name)
+                    ).to_response()),
+                };
+
+                manager.run_trigger(first_plugin, req).and_then(|(name, resp, ptr)| {
+                    if let Some(plugin) = manager.checker_plugins.get(name) {
+                        manager.run_checker(plugin, resp, ptr)
+                    } else {
+                        Err(PluginError::new(500, format!("Plugin {} not found", name)))
+                    }
                 }).and_then(|(name, resp, b, ptr)| {
-                    manager.run_handler(name, resp, b, ptr)
+                    if let Some(plugin) = manager.handler_plugins.get(name) {
+                        manager.run_handler(plugin, resp, b, ptr)
+                    } else {
+                        Err(PluginError::new(500, format!("Plugin {} not found", name)))
+                    }
                 }).or_else(|e| Ok(e.to_response()))
             })
         ).map_err(|e| {
