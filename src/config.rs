@@ -105,6 +105,12 @@ pub struct Trigger {
     pub plugin_path: String,
 }
 
+impl Borrow<String> for Trigger {
+    fn borrow(&self) -> &String {
+        &self.name
+    }
+}
+
 impl Hash for Trigger {
     fn hash<H>(&self, state: &mut H) where H: Hasher {
         self.name.hash(state)
@@ -121,6 +127,12 @@ pub struct Checker {
     pub plugin_path: String,
 }
 
+impl Borrow<String> for Checker {
+    fn borrow(&self) -> &String {
+        &self.name
+    }
+}
+
 impl Hash for Checker {
     fn hash<H>(&self, state: &mut H) where H: Hasher {
         self.name.hash(state)
@@ -133,6 +145,12 @@ pub struct Handler {
     pub plugin_type: PluginType,
     pub retry_strategy: RetryStrategy,
     pub plugin_path: String,
+}
+
+impl Borrow<String> for Handler {
+    fn borrow(&self) -> &String {
+        &self.name
+    }
 }
 
 impl Hash for Handler {

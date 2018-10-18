@@ -1,12 +1,14 @@
-use std::collections::HashMap;
+use std::borrow::Borrow;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{self,Display};
+use std::hash::{Hash,Hasher};
 
 use hyper::{Body,Request,Response,StatusCode};
 use libc;
 use libloading::{Library,Symbol};
 
-use config::TomlConfig;
+use config::{self,TomlConfig};
 use err::DemeanorError;
 
 #[derive(Debug)]
@@ -41,47 +43,68 @@ impl Display for PluginError {
 impl Error for PluginError {
 }
 
-pub struct Plugin {
+pub struct Plugin<T> {
     lib: Library,
-    next: Option<String>,
+    plugin_def: T,
+}
+
+impl<T> PartialEq for Plugin<T> where T: PartialEq {
+    fn eq(&self, rhs: &Plugin<T>) -> bool {
+        self.plugin_def == rhs.plugin_def
+    }
+}
+
+impl<T> Eq for Plugin<T> where T: Eq {
+}
+
+impl<T> Hash for Plugin<T> where T: Hash {
+    fn hash<H>(&self, hasher: &mut H) where H: Hasher {
+        self.plugin_def.hash(hasher)
+    }
+}
+
+impl<T> Borrow<String> for Plugin<T> where T: Borrow<String> {
+    fn borrow(&self) -> &String {
+        self.plugin_def.borrow()
+    }
 }
 
 pub struct PluginManager {
-    trigger_plugins: HashMap<String, Plugin>,
-    checker_plugins: HashMap<String, Plugin>,
-    handler_plugins: HashMap<String, Plugin>,
+    trigger_plugins: HashSet<Plugin<config::Trigger>>,
+    checker_plugins: HashSet<Plugin<config::Checker>>,
+    handler_plugins: HashSet<Plugin<config::Handler>>,
 }
 
 impl PluginManager {
     pub fn new(config: &mut TomlConfig) -> Result<Self, DemeanorError> {
-        let mut trigger_hm = HashMap::new();
+        let mut trigger_hm = HashSet::new();
         for plugin_def in config.triggers.drain() {
             let plugin = Plugin {
-                lib: Library::new(plugin_def.plugin_path)
+                lib: Library::new(plugin_def.plugin_path.as_str())
                     .map_err(|e| DemeanorError::new(e))?,
-                next: Some(plugin_def.next_plugin),
+                plugin_def, 
             };
-            trigger_hm.insert(plugin_def.name, plugin);
+            trigger_hm.insert(plugin);
         }
 
-        let mut checker_hm = HashMap::new();
+        let mut checker_hm = HashSet::new();
         for plugin_def in config.checkers.drain() {
             let plugin = Plugin {
-                lib: Library::new(plugin_def.plugin_path)
+                lib: Library::new(plugin_def.plugin_path.as_str())
                     .map_err(|e| DemeanorError::new(e))?,
-                next: Some(plugin_def.next_plugin),
+                plugin_def,
             };
-            checker_hm.insert(plugin_def.name, plugin);
+            checker_hm.insert(plugin);
         }
 
-        let mut handler_hm = HashMap::new();
+        let mut handler_hm = HashSet::new();
         for plugin_def in config.handlers.drain() {
             let plugin = Plugin {
-                lib: Library::new(plugin_def.plugin_path)
+                lib: Library::new(plugin_def.plugin_path.as_str())
                     .map_err(|e| DemeanorError::new(e))?,
-                next: None,
+                plugin_def,
             };
-            handler_hm.insert(plugin_def.name, plugin);
+            handler_hm.insert(plugin);
         }
 
         Ok(PluginManager {
@@ -105,10 +128,7 @@ impl PluginManager {
                 return Err(PluginError::new(500, format!("Trigger plugin {} returned an error", name)));
             }
 
-            match pi.next {
-                Some(ref next) => Ok((next, response, state)),
-                None => Err(PluginError::new(500, "Could not determine next plugin")),
-            }
+            Ok((&pi.plugin_def.next_plugin, response, state))
         } else {
             Err(PluginError::new(500, "The endpoint reached does not have an associated plugin"))
         }
@@ -122,10 +142,7 @@ impl PluginManager {
 
             let compliant = unsafe { callback(state) };
 
-            match pi.next {
-                Some(ref next) => Ok((next, resp, compliant, state)),
-                None => Err(PluginError::new(500, "Could not determine next plugin")),
-            }
+            Ok((&pi.plugin_def.next_plugin, resp, compliant, state))
         } else {
             Err(PluginError::new(500, "The endpoint reached does not have an associated plugin"))
         }
