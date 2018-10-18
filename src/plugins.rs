@@ -7,6 +7,7 @@ use libc;
 use libloading::{Library,Symbol};
 
 use config::TomlConfig;
+use err::DemeanorError;
 
 #[derive(Debug)]
 pub struct PluginError(Response<Body>);
@@ -52,33 +53,37 @@ pub struct PluginManager {
 }
 
 impl PluginManager {
-    pub fn new(config: &mut TomlConfig) -> Result<Self, PluginError> {
+    pub fn new(config: &mut TomlConfig) -> Result<Self, DemeanorError> {
         let mut trigger_hm = HashMap::new();
         for plugin_def in config.triggers.drain() {
             let plugin = Plugin {
-                lib: Library::new(plugin_def.plugin_path.clone()).map_err(|e| PluginError::new(500, e))?,
-                next: Some(plugin_def.next_plugin.clone()),
+                lib: Library::new(plugin_def.plugin_path)
+                    .map_err(|e| DemeanorError::new(e))?,
+                next: Some(plugin_def.next_plugin),
             };
-            trigger_hm.insert(plugin_def.name.clone(), plugin);
+            trigger_hm.insert(plugin_def.name, plugin);
         }
 
         let mut checker_hm = HashMap::new();
         for plugin_def in config.checkers.drain() {
             let plugin = Plugin {
-                lib: Library::new(plugin_def.plugin_path.clone()).map_err(|e| PluginError::new(500, e))?,
-                next: Some(plugin_def.next_plugin.clone()),
+                lib: Library::new(plugin_def.plugin_path)
+                    .map_err(|e| DemeanorError::new(e))?,
+                next: Some(plugin_def.next_plugin),
             };
-            checker_hm.insert(plugin_def.name.clone(), plugin);
+            checker_hm.insert(plugin_def.name, plugin);
         }
 
         let mut handler_hm = HashMap::new();
         for plugin_def in config.handlers.drain() {
             let plugin = Plugin {
-                lib: Library::new(plugin_def.plugin_path.clone()).map_err(|e| PluginError::new(500, e))?,
+                lib: Library::new(plugin_def.plugin_path)
+                    .map_err(|e| DemeanorError::new(e))?,
                 next: None,
             };
-            handler_hm.insert(plugin_def.name.clone(), plugin);
+            handler_hm.insert(plugin_def.name, plugin);
         }
+
         Ok(PluginManager {
             trigger_plugins: trigger_hm,
             checker_plugins: checker_hm,

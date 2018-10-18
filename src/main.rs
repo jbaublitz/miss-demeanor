@@ -13,8 +13,6 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate tokio;
-extern crate tokio_io;
-extern crate tokio_threadpool;
 extern crate toml;
 
 mod config;

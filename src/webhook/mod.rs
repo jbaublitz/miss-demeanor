@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Debug;
-use std::io::{self,Read,Write};
-use std::net::TcpStream;
-use std::os::unix::net::UnixStream;
+use std::io;
 use std::process;
 use std::sync::Arc;
 
@@ -14,14 +12,12 @@ use hyper::server::conn::Http;
 use hyper_tls;
 use native_tls;
 use tokio;
-use tokio::prelude::Future;
+use tokio::io::{AsyncRead,AsyncWrite};
+use tokio::net::{self,TcpStream,UnixStream};
+use tokio::prelude::{Future,Stream};
 use tokio::prelude::future::lazy;
-use tokio_io::{AsyncRead,AsyncWrite};
-use tokio_io::io::AllowStdIo;
-use tokio_threadpool::ThreadPool;
 
 use config::{self,TomlConfig};
-use err::DemeanorError;
 use plugins::PluginManager;
 
 mod listener;
@@ -54,14 +50,8 @@ impl TlsIdentity {
     }
 }
 
-pub struct WebhookServer {
-    pool: ThreadPool,
-    identity: Option<TlsIdentity>,
-    plugin_manager: Arc<PluginManager>,
-}
-
-fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::Endpoint>>, stream: S)
-        where S: 'static + AsyncRead + AsyncWrite + Send {
+fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::Endpoint>>,
+                   stream: S) where S: 'static + AsyncRead + AsyncWrite + Send {
     tokio::spawn(lazy(move || {
         Http::new().serve_connection(stream,
             hyper::service::service_fn(move |req: Request<Body>| -> Result<Response<Body>, http::Error> {
@@ -87,24 +77,59 @@ fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::E
     }));
 }
 
-fn listen<L, S, E>(plugin_manager: Arc<PluginManager>,
-                   mut tls_acceptor: Option<Arc<native_tls::TlsAcceptor>>,
-                   server: config::Server) -> Result<(), Box<Error>>
-        where L: Listener<S, E>, S: 'static + Read + Write + Debug + Send, E: 'static + Error {
+fn listen<L, S, C, E>(plugin_manager: Arc<PluginManager>,
+                      mut tls_acceptor: Option<Arc<native_tls::TlsAcceptor>>,
+                      server: config::Server) -> Result<(), Box<Error>>
+        where L: Listener<S, C, E>, C: 'static + AsyncRead + AsyncWrite + Debug + Send,
+              S: 'static + Stream<Item=C> + Send,
+              S::Error: Send,
+              E: 'static + Error + Send {
     let server_addr = server.listen_addr;
     let listener = L::bind(server_addr)?;
     let endpoints = Arc::new(server.endpoints);
-    for sock_result in listener {
-        let sock = sock_result?;
+    tokio::spawn(listener.for_each(move |sock| {
         let stream = if let Some(ref mut acceptor) = tls_acceptor.as_mut() {
-            let tls_stream = acceptor.accept(AllowStdIo::new(sock))?;
+            let tls_stream = match acceptor.accept(sock) {
+                Ok(st) => st,
+                Err(e) => {
+                    error!("{}", e);
+                    return Ok(())
+                }
+            };
             hyper_tls::MaybeHttpsStream::from(tls_stream)
         } else {
-            hyper_tls::MaybeHttpsStream::from(AllowStdIo::new(sock))
+            hyper_tls::MaybeHttpsStream::from(sock)
         };
-        spawn_server(Arc::clone(&plugin_manager), Arc::clone(&endpoints), stream)
-    }
+        spawn_server(Arc::clone(&plugin_manager), Arc::clone(&endpoints), stream);
+        Ok(())
+    }).map_err(|_| ()));
     Ok(())
+}
+
+fn spawn_listener<L, S, C, E>(server: config::Server, manager: Arc<PluginManager>,
+                              identity: Arc<Option<TlsIdentity>>) -> Result<(), Box<Error>>
+        where L: Listener<S, C, E>, C: 'static + AsyncRead + AsyncWrite + Debug + Send,
+              S: 'static + Stream<Item=C> + Send,
+              S::Error: Send,
+              E: 'static + Error + Send {
+    let mut tls_acceptor = None;
+    if let Some(ident) = identity.as_ref() {
+        tls_acceptor = native_tls::TlsAcceptor::new(ident.into_identity()?).map(Arc::new).ok();
+    }
+
+    tokio::spawn(lazy(move || {
+        listen::<L, S, C, E>(manager, tls_acceptor, server).map_err(|e| {
+            error!("{}", e);
+            ()
+        })
+    }));
+
+    Ok(())
+}
+
+pub struct WebhookServer {
+    identity: Option<TlsIdentity>,
+    plugin_manager: Arc<PluginManager>,
 }
 
 impl WebhookServer {
@@ -113,46 +138,40 @@ impl WebhookServer {
             UseTls::Yes(identity) => Some(identity),
             UseTls::No => None,
         };
-        Ok(WebhookServer { pool: ThreadPool::new(), identity,
-            plugin_manager: Arc::new(plugin_manager) })
-    }
-
-    fn spawn_listener<L, S, E>(&self, server: config::Server) -> Result<(), Box<Error>>
-            where L: Listener<S, E>, S: 'static + Read + Write + Debug + Send, E: 'static + Error {
-        let mut tls_acceptor = None;
-        if let Some(ref ident) = self.identity {
-            tls_acceptor = native_tls::TlsAcceptor::new(ident.into_identity()?).map(Arc::new).ok();
-        }
-        let plugin_manager = Arc::clone(&self.plugin_manager); 
-
-        self.pool.spawn(lazy(move || {
-            listen::<L, S, E>(plugin_manager, tls_acceptor, server).map_err(|e| {
-                error!("{}", e);
-                ()
-            })
-        }));
-
-        Ok(())
+        Ok(WebhookServer { identity, plugin_manager: Arc::new(plugin_manager) })
     }
 
     pub fn serve<'a>(self, config: TomlConfig) -> Result<(), Box<Error>> {
-        for server in config.servers.into_iter() {
-            match server.server_type {
-                config::ServerType::Webhook => {
-                    self.spawn_listener::<TcpListener, TcpStream, io::Error>(server)?
-                }
-                config::ServerType::UnixSocket => {
-                    self.spawn_listener::<UnixListener, UnixStream, io::Error>(server)?
-                },
-                config::ServerType::UnknownServerType => {
-                    error!("Server type not recognized - exiting");
-                    process::exit(1);
-                }
-            };
-        }
-        self.pool.shutdown_on_idle().wait().map_err(|_| {
-            DemeanorError::new("Tokio runtime shutdown failed")
-        })?;
+        let identity = Arc::new(self.identity);
+        let plugin_manager_clone = Arc::clone(&self.plugin_manager);
+
+        tokio::run(lazy(move || {
+            for server in config.servers.into_iter() {
+                match server.server_type {
+                    config::ServerType::Webhook => {
+                        spawn_listener::<TcpListener, net::tcp::Incoming, TcpStream, io::Error>(
+                            server, Arc::clone(&plugin_manager_clone), Arc::clone(&identity)
+                        ).map_err(|e| {
+                            error!("{}", e);
+                            ()
+                        })?
+                    },
+                    config::ServerType::UnixSocket => {
+                        spawn_listener::<UnixListener, net::unix::Incoming, UnixStream, io::Error>(
+                            server, Arc::clone(&plugin_manager_clone), Arc::clone(&identity)
+                        ).map_err(|e| {
+                            error!("{}", e);
+                            ()
+                        })?
+                    },
+                    config::ServerType::UnknownServerType => {
+                        error!("Server type not recognized - exiting");
+                        process::exit(1);
+                    }
+                };
+            }
+            Ok(())
+        }));
         Ok(())
     }
 }

@@ -1,21 +1,16 @@
-use std::error::Error;
 use std::io;
-use std::net;
+use std::net::ToSocketAddrs;
+
+use tokio::net;
 
 use webhook::listener::Listener;
 
 pub(crate) struct TcpListener(net::TcpListener);
 
-impl Listener<net::TcpStream, io::Error> for TcpListener {
-    fn bind(listen_addr: String) -> Result<Self, Box<Error>> {
-        Ok(TcpListener(net::TcpListener::bind(listen_addr)?))
-    }
-}
-
-impl Iterator for TcpListener {
-    type Item = Result<net::TcpStream, io::Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.0.accept().map(|p| p.0))
+impl Listener<net::tcp::Incoming, net::TcpStream, io::Error> for TcpListener {
+    fn bind(listen_addr: String) -> Result<net::tcp::Incoming, io::Error> {
+        let sock_addr = &listen_addr.to_socket_addrs()?.next()
+            .ok_or(io::Error::from(io::ErrorKind::AddrNotAvailable))?;
+        net::TcpListener::bind(sock_addr).map(|l| l.incoming())
     }
 }
