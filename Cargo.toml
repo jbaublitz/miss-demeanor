@@ -2,6 +2,11 @@
 name = "miss-demeanor"
 version = "0.1.0"
 authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
+build = "build.rs"
+
+[build-dependencies.cc]
+optional = true
+version = "*"
 
 [dependencies]
 env_logger = "0.5.13"
@@ -23,3 +28,7 @@ toml = "0.4.8"
 path = "./miss-demeanor-pluginutils"
 version = "0.1.0"
 features = ["rust"]
+
+[features]
+ruby = ["cc"]
+python = ["cc"]
