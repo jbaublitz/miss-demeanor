@@ -1,0 +1,12 @@
+[package]
+name = "example-ruby-plugin"
+version = "0.1.0"
+authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
+build = "build.rs"
+
+[build-dependencies]
+cc = "*"
+
+[dependencies.miss-demeanor-pluginutils]
+version = "*"
+path = "../../miss-demeanor-pluginutils"
