@@ -1,5 +1,5 @@
 #include <ruby.h>
-#include "ruby/miss-demeanor-pluginutils.h"
+#include "miss-demeanor-pluginutils.h"
 
 extern int start_miss_demeanor_ruby() {
         if (ruby_setup()) {
