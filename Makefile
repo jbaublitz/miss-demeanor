@@ -7,4 +7,4 @@ ruby: with-ruby
 
 .PHONY:
 with-ruby:
-	CARGO_RUBY_VERSION=${CARGO_RUBY_VERSION} cargo rustc --features=ruby --release -- -C "link-args=`pkg-config --libs-only-l ${CARGO_RUBY_VERSION}`"
+	CARGO_RUBY_VERSION=${CARGO_RUBY_VERSION} cargo rustc --features=ruby --release -- -C "link-args=-L./target/release/deps/ -lmissdemeanorpluginutils `pkg-config --libs-only-l ${CARGO_RUBY_VERSION}`"

@@ -95,6 +95,7 @@ impl<T> PartialEq for Plugin<T> where T: PartialEq {
             (&Plugin::Python(ref config1, _), &Plugin::Python(ref config2, _)) => {
                 config1 == config2
             },
+            _ => false,
         }
     }
 }

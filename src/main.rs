@@ -65,10 +65,11 @@ fn parse_opts() -> Result<Args, Box<Error>> {
 }
 
 #[cfg(feature = "ruby")]
+#[link = "miss-demeanor-ruby"]
 extern "C" {
     #[cfg(feature = "ruby")]
     fn start_miss_demeanor_ruby() -> libc::c_int;
-    fn run_ruby_trigger(request: *const libc::c_void) -> libc::c_void;
+    fn run_ruby_trigger(request: *const libc::c_void) -> *mut libc::c_void;
     fn cleanup_miss_demeanor_ruby();
 }
 

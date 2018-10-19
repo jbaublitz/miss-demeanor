@@ -11,7 +11,7 @@ use hyper::rt::Stream;
 use tokio::runtime::Runtime;
 
 #[no_mangle]
-pub fn hyper_request_method(req: *const Request<Body>) -> *const libc::c_char {
+pub extern "C" fn hyper_request_method(req: *const Request<Body>) -> *const libc::c_char {
     if let Some(r) = unsafe { req.as_ref() } {
         r.method().as_str().as_ptr() as *const libc::c_char
     } else {

@@ -31,7 +31,6 @@ toml = "0.4.8"
 [dependencies.miss-demeanor-pluginutils]
 path = "./miss-demeanor-pluginutils"
 version = "0.1.0"
-features = ["rust"]
 
 [features]
 ruby = ["cc", "pkg-config"]
