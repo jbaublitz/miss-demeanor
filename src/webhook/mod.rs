@@ -63,10 +63,10 @@ fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::E
                 };
 
                 manager.exec_trigger_plugin(first_plugin_name, req)
-                        .and_then(|(name, resp, ptr)| {
-                    manager.exec_checker_plugin(name, resp, ptr)
-                }).and_then(|(name, resp, b, ptr)| {
-                    manager.exec_handler_plugin(name, resp, b, ptr)
+                        .and_then(|(name, ptr)| {
+                    manager.exec_checker_plugin(name, ptr)
+                }).and_then(|(name, b, ptr)| {
+                    manager.exec_handler_plugin(name, b, ptr)
                 }).or_else(|e| Ok(e.to_response()))
             })
         ).map_err(|e| {

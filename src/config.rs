@@ -52,7 +52,9 @@ impl From<String> for ServerType {
 #[derive(Deserialize,PartialEq,Eq)]
 #[serde(from="String")]
 pub enum PluginType {
+    #[cfg(feature = "python")]
     Python,
+    #[cfg(feature = "ruby")]
     Ruby,
     CABI,
     UnknownPluginType,
@@ -61,7 +63,9 @@ pub enum PluginType {
 impl From<String> for PluginType {
     fn from(v: String) -> Self {
         match v.as_str() {
+            #[cfg(feature = "python")]
             "python" => PluginType::Python,
+            #[cfg(feature = "ruby")]
             "ruby" => PluginType::Ruby,
             "c_abi" => PluginType::CABI,
             _ => PluginType::UnknownPluginType,

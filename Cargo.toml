@@ -8,6 +8,10 @@ build = "build.rs"
 optional = true
 version = "*"
 
+[build-dependencies.pkg-config]
+optional = true
+version = "*"
+
 [dependencies]
 env_logger = "0.5.13"
 futures = "0.1.25"
@@ -30,5 +34,5 @@ version = "0.1.0"
 features = ["rust"]
 
 [features]
-ruby = ["cc"]
-python = ["cc"]
+ruby = ["cc", "pkg-config"]
+python = ["cc", "pkg-config"]

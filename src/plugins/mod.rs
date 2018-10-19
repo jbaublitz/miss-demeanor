@@ -13,10 +13,14 @@ use config::{self,PluginConfig,PluginType,TomlConfig};
 mod cabi;
 pub use self::cabi::CABIPlugin;
 
+#[cfg(feature = "python")]
 mod python;
+#[cfg(feature = "python")]
 pub use self::python::PythonPlugin;
 
+#[cfg(feature = "ruby")]
 mod ruby;
+#[cfg(feature = "ruby")]
 pub use self::ruby::RubyPlugin;
 
 #[derive(Debug)]
@@ -52,17 +56,16 @@ impl Error for PluginError {
 }
 
 pub trait PluginAPI {
-    fn run_trigger(&self, Request<Body>)
-            -> Result<(Response<Body>, *mut libc::c_void), PluginError>;
-    fn run_checker(&self, Response<Body>, *mut libc::c_void)
-            -> Result<(Response<Body>, bool, *mut libc::c_void), PluginError>;
-    fn run_handler(&self, Response<Body>, bool, *mut libc::c_void)
-            -> Result<Response<Body>, PluginError>;
+    fn run_trigger(&self, Request<Body>) -> Result<*mut libc::c_void, PluginError>;
+    fn run_checker(&self, *mut libc::c_void) -> Result<(bool, *mut libc::c_void), PluginError>;
+    fn run_handler(&self, bool, *mut libc::c_void) -> Result<(), PluginError>;
 }
 
 pub enum Plugin<T> {
     CABI(T, CABIPlugin),
+    #[cfg(feature = "ruby")]
     Ruby(T, RubyPlugin),
+    #[cfg(feature = "python")]
     Python(T, PythonPlugin),
 }
 
@@ -70,7 +73,9 @@ impl<T> Plugin<T> {
     fn get_config(&self) -> &T {
         match *self {
             Plugin::CABI(ref config, _) => config,
+            #[cfg(feature = "ruby")]
             Plugin::Ruby(ref config, _) => config,
+            #[cfg(feature = "python")]
             Plugin::Python(ref config, _) => config,
         }
     }
@@ -82,13 +87,14 @@ impl<T> PartialEq for Plugin<T> where T: PartialEq {
             (&Plugin::CABI(ref config1, _), &Plugin::CABI(ref config2, _)) => {
                 config1 == config2
             },
+            #[cfg(feature = "ruby")]
             (&Plugin::Ruby(ref config1, _), &Plugin::Ruby(ref config2, _)) => {
                 config1 == config2
             },
+            #[cfg(feature = "python")]
             (&Plugin::Python(ref config1, _), &Plugin::Python(ref config2, _)) => {
                 config1 == config2
             },
-            _ => false,
         }
     }
 }
@@ -99,7 +105,9 @@ impl<T> Hash for Plugin<T> where T: Hash {
     fn hash<H>(&self, hasher: &mut H) where H: Hasher {
         match *self {
             Plugin::CABI(ref config, _) => config.hash(hasher),
+            #[cfg(feature = "ruby")]
             Plugin::Ruby(ref config, _) => config.hash(hasher),
+            #[cfg(feature = "python")]
             Plugin::Python(ref config, _) => config.hash(hasher),
         }
     }
@@ -109,7 +117,9 @@ impl<T> Borrow<String> for Plugin<T> where T: Borrow<String> {
     fn borrow(&self) -> &String {
         match *self {
             Plugin::CABI(ref config, _) => config.borrow(),
+            #[cfg(feature = "ruby")]
             Plugin::Ruby(ref config, _) => config.borrow(),
+            #[cfg(feature = "python")]
             Plugin::Python(ref config, _) => config.borrow(),
         }
     }
@@ -117,26 +127,36 @@ impl<T> Borrow<String> for Plugin<T> where T: Borrow<String> {
 
 impl<T> PluginAPI for Plugin<T> {
     fn run_trigger(&self, req: Request<Body>)
-            -> Result<(Response<Body>, *mut libc::c_void), PluginError> {
+            -> Result<(*mut libc::c_void), PluginError> {
         match *self {
             Plugin::CABI(_, ref plugin) => plugin.run_trigger(req),
+            #[cfg(feature = "ruby")]
             Plugin::Ruby(_, ref plugin) => plugin.run_trigger(req),
+            #[cfg(feature = "python")]
             Plugin::Python(_, ref plugin) => plugin.run_trigger(req),
         }
     }
 
-    fn run_checker(&self, resp: Response<Body>, state: *mut libc::c_void)
-            -> Result<(Response<Body>, bool, *mut libc::c_void), PluginError> {
+    fn run_checker(&self, state: *mut libc::c_void)
+            -> Result<(bool, *mut libc::c_void), PluginError> {
         match *self {
-            Plugin::CABI(_, ref plugin) => plugin.run_checker(resp, state),
-            Plugin::Ruby(_, ref plugin) => plugin.run_checker(resp, state),
-            Plugin::Python(_, ref plugin) => plugin.run_checker(resp, state),
+            Plugin::CABI(_, ref plugin) => plugin.run_checker(state),
+            #[cfg(feature = "ruby")]
+            Plugin::Ruby(_, ref plugin) => plugin.run_checker(state),
+            #[cfg(feature = "python")]
+            Plugin::Python(_, ref plugin) => plugin.run_checker(state),
         }
     }
 
-    fn run_handler(&self, resp: Response<Body>, compliant: bool, state: *mut libc::c_void)
-            -> Result<Response<Body>, PluginError> {
-        unimplemented!()
+    fn run_handler(&self, compliant: bool, state: *mut libc::c_void)
+            -> Result<(), PluginError> {
+        match *self {
+            Plugin::CABI(_, ref plugin) => plugin.run_handler(compliant, state),
+            #[cfg(feature = "ruby")]
+            Plugin::Ruby(_, ref plugin) => plugin.run_handler(compliant, state),
+            #[cfg(feature = "python")]
+            Plugin::Python(_, ref plugin) => plugin.run_handler(compliant, state),
+        }
     }
 }
 
@@ -177,10 +197,12 @@ impl PluginManager {
                 let plugin = CABIPlugin::new(config.get_plugin_path())?;
                 Ok(Plugin::CABI(config, plugin))
             },
+            #[cfg(feature = "python")]
             PluginType::Python => {
                 let plugin = PythonPlugin::new(config.get_plugin_path())?;
                 Ok(Plugin::Python(config, plugin))
             },
+            #[cfg(feature = "ruby")]
             PluginType::Ruby => {
                 let plugin = RubyPlugin::new(config.get_plugin_path())?;
                 Ok(Plugin::Ruby(config, plugin))
@@ -192,30 +214,30 @@ impl PluginManager {
     }
 
     pub fn exec_trigger_plugin(&self, name: &String, req: Request<Body>)
-            -> Result<(&String, Response<Body>, *mut libc::c_void), PluginError> {
+            -> Result<(&String, *mut libc::c_void), PluginError> {
         let plugin = self.trigger_plugins.get(name)
             .ok_or(PluginError::new(500, format!("Failed to find trigger plugin {}",
                                                  name)))?;
-        let (resp, state) = plugin.run_trigger(req)?;
-        Ok((&plugin.get_config().next_plugin, resp, state))
+        let state = plugin.run_trigger(req)?;
+        Ok((&plugin.get_config().next_plugin, state))
     }
 
-    pub fn exec_checker_plugin(&self, name: &String, req: Response<Body>,
-                               state: *mut libc::c_void)
-            -> Result<(&String, Response<Body>, bool, *mut libc::c_void), PluginError> {
+    pub fn exec_checker_plugin(&self, name: &String, state: *mut libc::c_void)
+            -> Result<(&String, bool, *mut libc::c_void), PluginError> {
         let plugin = self.checker_plugins.get(name)
             .ok_or(PluginError::new(500, format!("Failed to find checker plugin {}",
                                                   name)))?;
-        let (resp, comp, state) = plugin.run_checker(req, state)?;
-        Ok((&plugin.get_config().next_plugin, resp, comp, state))
+        let (comp, state) = plugin.run_checker(state)?;
+        Ok((&plugin.get_config().next_plugin, comp, state))
     }
 
-    pub fn exec_handler_plugin(&self, name: &String, req: Response<Body>, compliant: bool,
+    pub fn exec_handler_plugin(&self, name: &String, compliant: bool,
                                state: *mut libc::c_void)
             -> Result<Response<Body>, PluginError> {
         let plugin = self.handler_plugins.get(name)
             .ok_or(PluginError::new(500, format!("Failed to find trigger plugin {}",
                                                   name)))?;
-        plugin.run_handler(req, compliant, state)
+        plugin.run_handler(compliant, state)?;
+        Ok(Response::new(Body::from("Success!")))
     }
 }

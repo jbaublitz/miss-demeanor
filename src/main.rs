@@ -64,6 +64,14 @@ fn parse_opts() -> Result<Args, Box<Error>> {
     Ok(args)
 }
 
+#[cfg(feature = "ruby")]
+extern "C" {
+    #[cfg(feature = "ruby")]
+    fn start_miss_demeanor_ruby() -> libc::c_int;
+    fn run_ruby_trigger(request: *const libc::c_void) -> libc::c_void;
+    fn cleanup_miss_demeanor_ruby();
+}
+
 fn main() {
     env_logger::Builder::new().filter_level(log::LevelFilter::Info).init();
     let args = match parse_opts() {
@@ -80,6 +88,15 @@ fn main() {
             process::exit(1);
         }
     };
+
+    #[cfg(feature = "ruby")]
+    {
+        if unsafe { start_miss_demeanor_ruby() } < 0 {
+            error!("Failed to start embedded Ruby");
+            process::exit(1);
+        };
+    }
+
     let plugin_manager = match PluginManager::new(&mut config) {
         Ok(pm) => pm,
         Err(e) => {
