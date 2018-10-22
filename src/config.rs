@@ -9,7 +9,6 @@ use serde::Deserialize;
 use toml;
 
 pub trait PluginConfig {
-    fn get_plugin_type(&self) -> &PluginType;
     fn get_plugin_path(&self) -> &str;
 }
 
@@ -110,15 +109,10 @@ pub struct Trigger {
     pub name: String,
     pub use_checker: bool,
     pub next_plugin: String,
-    pub plugin_type: PluginType,
     pub plugin_path: String,
 }
 
 impl PluginConfig for Trigger {
-    fn get_plugin_type(&self) -> &PluginType {
-        &self.plugin_type
-    }
-
     fn get_plugin_path(&self) -> &str {
         self.plugin_path.as_str()
     }
@@ -140,17 +134,12 @@ impl Hash for Trigger {
 pub struct Checker {
     pub name: String,
     pub next_plugin: String,
-    pub plugin_type: PluginType,
     pub retry_strategy: RetryStrategy,
     pub strict_evaluation: bool,
     pub plugin_path: String,
 }
 
 impl PluginConfig for Checker {
-    fn get_plugin_type(&self) -> &PluginType {
-        &self.plugin_type
-    }
-
     fn get_plugin_path(&self) -> &str {
         self.plugin_path.as_str()
     }
@@ -171,16 +160,11 @@ impl Hash for Checker {
 #[derive(Deserialize,PartialEq,Eq)]
 pub struct Handler {
     pub name: String,
-    pub plugin_type: PluginType,
     pub retry_strategy: RetryStrategy,
     pub plugin_path: String,
 }
 
 impl PluginConfig for Handler {
-    fn get_plugin_type(&self) -> &PluginType {
-        &self.plugin_type
-    }
-
     fn get_plugin_path(&self) -> &str {
         self.plugin_path.as_str()
     }
@@ -200,6 +184,7 @@ impl Hash for Handler {
 
 #[derive(Deserialize)]
 pub struct TomlConfig {
+    pub plugin_type: PluginType,
     pub servers: HashSet<Server>,
     pub triggers: HashSet<Trigger>,
     pub checkers: HashSet<Checker>,

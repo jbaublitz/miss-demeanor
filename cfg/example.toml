@@ -1,3 +1,5 @@
+plugin_type = "ruby"
+
 [[servers]]
 server_type = "webhook"
 listen_addr = "127.0.0.1:8080"
@@ -15,20 +17,17 @@ trigger_name = "github-merged"
 name = "github-merged"
 use_checker = false
 next_plugin = "http_post"
-plugin_type = "ruby"
 plugin_path = "./github-merged.rb"
 
 [[triggers]]
 name = "github-pr"
 use_checker = true
 next_plugin = "jira"
-plugin_type = "ruby"
 plugin_path = "./github-pr.rb"
 
 [[checkers]]
 name = "jira"
 next_plugin = "github-handler"
-plugin_type = "ruby"
 plugin_path = "./jira.rb"
 retry_strategy = "linear"
 strict_evaluation = true

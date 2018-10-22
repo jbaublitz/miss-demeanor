@@ -4,21 +4,20 @@ use hyper::{Body,Request};
 use libc;
 use libloading::{Library,Symbol};
 
-use super::{PluginAPI,PluginError};
+use super::{Plugin,PluginError};
 
 pub struct CABIPlugin {
     lib: Library,
 }
 
-impl CABIPlugin {
-    pub fn new(path: &str) -> Result<Self, io::Error> {
+impl Plugin for CABIPlugin {
+    type State = *mut libc::c_void;
+
+    fn new(path: &str) -> Result<Self, io::Error> {
         Ok(CABIPlugin { lib: Library::new(path)?, })
     }
-}
 
-impl PluginAPI for CABIPlugin {
-    fn run_trigger(&self, mut req: Request<Body>)
-            -> Result<*mut libc::c_void, PluginError> {
+    fn run_trigger(&self, mut req: Request<Body>) -> Result<*mut libc::c_void, PluginError> {
         let callback: Symbol<unsafe extern fn(*mut Request<Body>) -> *mut libc::c_void> =
             unsafe { self.lib.get(b"trigger") }.map_err(|e| PluginError::new(500, e))?;
 
@@ -41,8 +40,7 @@ impl PluginAPI for CABIPlugin {
         Ok((compliant, state))
     }
 
-    fn run_handler(&self, compliant: bool, state: *mut libc::c_void)
-            -> Result<(), PluginError> {
+    fn run_handler(&self, compliant: bool, state: *mut libc::c_void) -> Result<(), PluginError> {
         let callback: Symbol<unsafe extern fn(bool, *mut libc::c_void) -> libc::c_int> =
             unsafe { self.lib.get(b"handler") }.map_err(|e| PluginError::new(500, e))?;
 

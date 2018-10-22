@@ -25,7 +25,12 @@ use std::fs::File;
 use std::io::Read;
 use std::process;
 
-use plugins::PluginManager;
+use config::PluginType;
+use plugins::{CABIPlugin,PluginManager};
+#[cfg(feature = "python")]
+use plugins::PythonPlugin;
+#[cfg(feature = "ruby")]
+use plugins::RubyPlugin;
 
 pub struct Args {
     pub use_tls: webhook::UseTls,
@@ -67,9 +72,36 @@ fn parse_opts() -> Result<Args, Box<Error>> {
 #[cfg(feature = "ruby")]
 extern "C" {
     fn start_miss_demeanor_ruby() -> libc::c_int;
-    fn run_ruby_trigger(request: *const libc::c_void) -> *mut libc::c_void;
+    fn run_ruby_trigger(request: *const libc::c_void) -> libc::c_ulong;
+    fn is_nil(id: libc::c_ulong) -> libc::c_int;
     fn cleanup_miss_demeanor_ruby();
 }
+
+macro_rules! match_and_serve (
+    ($plugin_ty:ty, $args: ident, $config: ident) => {{
+        let plugin_manager = match PluginManager::<$plugin_ty>::new(&mut $config) {
+            Ok(pm) => pm,
+            Err(e) => {
+                error!("{}", e);
+                process::exit(1);
+            }
+        };
+        let server = match webhook::WebhookServer::new($args.use_tls, plugin_manager) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("{}", e);
+                process::exit(1);
+            }
+        };
+        match server.serve($config) {
+            Ok(()) => (),
+            Err(e) => {
+                error!("{}", e);
+                process::exit(1);
+            }
+        };
+    }}
+);
 
 fn main() {
     env_logger::Builder::new().filter_level(log::LevelFilter::Info).init();
@@ -96,24 +128,14 @@ fn main() {
         };
     }
 
-    let plugin_manager = match PluginManager::new(&mut config) {
-        Ok(pm) => pm,
-        Err(e) => {
-            error!("{}", e);
-            process::exit(1);
-        }
-    };
-    let server = match webhook::WebhookServer::new(args.use_tls, plugin_manager) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("{}", e);
-            process::exit(1);
-        }
-    };
-    match server.serve(config) {
-        Ok(()) => (),
-        Err(e) => {
-            error!("{}", e);
+    match config.plugin_type {
+        PluginType::CABI => match_and_serve!(CABIPlugin, args, config),
+        #[cfg(feature = "python")]
+        PluginType::Python => match_and_serve!(PythonPlugin, args, config),
+        #[cfg(feature = "ruby")]
+        PluginType::Ruby => match_and_serve!(RubyPlugin, args, config),
+        _ => {
+            error!("Unknown plugin type");
             process::exit(1);
         }
     };
