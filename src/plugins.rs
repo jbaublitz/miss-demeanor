@@ -3,12 +3,13 @@ use std::error::Error;
 use std::fmt::{self,Display};
 use std::io::{self,Write};
 use std::os::unix::io::{FromRawFd,AsRawFd};
+use std::os::unix::net::UnixStream;
 use std::process::{Command,Stdio};
 use std::str;
 
 use hyper::{Body,Request,Response,StatusCode};
 use serde_json::Value;
-use tokio::net::UnixStream;
+use tokio::prelude::future::lazy;
 use tokio::prelude::{Future,Stream};
 
 use config::{self,TomlConfig};
@@ -63,12 +64,32 @@ fn run_trigger(config: &config::Trigger, req: Request<Body>) -> Result<Value, Pl
             })?));
         }
     }
-    let body_string = str::from_utf8(&req.into_body().concat2().wait().map_err(|e| {
-        PluginError::new(500, e)
-    })?).map_err(|e| PluginError::new(500, e))?.to_string();
+    let vec = Vec::new();
+    tokio::spawn(lazy(move || {
+        req.into_body().concat2().map_err(|e| {
+            error!("{}", e);
+            ()
+        })
+    }).and_then(move |b| {
+        let mut moved_vec = vec;
+        moved_vec.write(&b).map(|_| ()).map_err(|e| {
+            error!("{}", e);
+            ()
+        })?;
+        Ok(moved_vec)
+    }).and_then(move |moved_vec| {
+        let body_string = str::from_utf8(moved_vec.as_slice()).map_err(|e| {
+            error!("{}", e);
+            ()
+        })?.to_string();
+        ipc_main.write(body_string.as_bytes()).map_err(|e| {
+            error!("{}", e);
+            ()
+        })?;
+        Ok(())
+    }));
 
     cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
-    ipc_main.write(body_string.as_bytes()).map_err(|e| PluginError::new(500, e))?;
     let output = cmd.output().map_err(|e| PluginError::new(500, e))?;
     Ok(Value::from(String::from_utf8(output.stdout)
                    .map_err(|e| PluginError::new(500, e))?))

@@ -17,7 +17,7 @@ trigger_name = "github-merged"
 name = "github-merged"
 use_checker = false
 next_plugin = "http_post"
-plugin_path = "github-merged"
+plugin_path = "./example-plugins/ruby/github-merged.rb"
 
 [[triggers]]
 name = "github-pr"
