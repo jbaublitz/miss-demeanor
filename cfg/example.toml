@@ -28,18 +28,18 @@ plugin_path = "./example-plugins/ruby/github-pr.rb"
 [[checkers]]
 name = "jira"
 next_plugin = "github-handler"
-plugin_path = "./jira.rb"
+plugin_path = "./example-plugins/ruby/jira.rb"
 retry_strategy = "linear"
 strict_evaluation = true
 
 [[handlers]]
 name = "http_post"
 plugin_type = "ruby"
-plugin_path = "./http_post.rb"
+plugin_path = "./example-plugins/ruby/http_post.rb"
 retry_strategy = "linear"
 
 [[handlers]]
 name = "github-handler"
 plugin_type = "ruby"
-plugin_path = "./github.rb"
+plugin_path = "./example-plugins/ruby/github.rb"
 retry_strategy = "linear"

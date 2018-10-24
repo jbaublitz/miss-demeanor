@@ -64,8 +64,12 @@ fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::E
                 };
 
                 manager.exec_trigger_plugin(first_plugin_name, req)
-                        .and_then(|(name, state)| {
-                    manager.exec_checker_plugin(name, state)
+                        .and_then(|(name, use_checker, state)| {
+                    if use_checker {
+                        manager.exec_checker_plugin(name, state)
+                    } else {
+                        Ok((name, state))
+                    }
                 }).and_then(|(name, state)| {
                     manager.exec_handler_plugin(name, state)
                 }).or_else(|e| Ok(e.to_response()))

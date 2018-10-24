@@ -5,12 +5,11 @@ use std::io::{self,Write};
 use std::os::unix::io::{FromRawFd,AsRawFd};
 use std::os::unix::net::UnixStream;
 use std::process::{Command,Stdio};
-use std::str;
 
 use hyper::{Body,Request,Response,StatusCode};
 use serde_json::Value;
-use tokio::prelude::future::lazy;
-use tokio::prelude::{Future,Stream};
+use tokio::io::AsyncWrite;
+use tokio::prelude::{future,stream,Async,Future,Stream};
 
 use config::{self,TomlConfig};
 
@@ -64,51 +63,58 @@ fn run_trigger(config: &config::Trigger, req: Request<Body>) -> Result<Value, Pl
             })?));
         }
     }
-    let vec = Vec::new();
-    tokio::spawn(lazy(move || {
-        req.into_body().concat2().map_err(|e| {
+    cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
+
+    ipc_main.write(json.to_string().as_bytes()).map_err(|e| PluginError::new(500, e))?;
+    tokio::spawn(req.into_body().concat2().map_err(|e| {
+        error!("{}", e);
+        ()
+    }).and_then(move |b| {
+        ipc_main.write(&b).map(|_| ()).map_err(|e| {
             error!("{}", e);
             ()
         })
-    }).and_then(move |b| {
-        let mut moved_vec = vec;
-        moved_vec.write(&b).map(|_| ()).map_err(|e| {
-            error!("{}", e);
-            ()
-        })?;
-        Ok(moved_vec)
-    }).and_then(move |moved_vec| {
-        let body_string = str::from_utf8(moved_vec.as_slice()).map_err(|e| {
-            error!("{}", e);
-            ()
-        })?.to_string();
-        ipc_main.write(body_string.as_bytes()).map_err(|e| {
-            error!("{}", e);
-            ()
-        })?;
-        Ok(())
     }));
 
-    cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
     let output = cmd.output().map_err(|e| PluginError::new(500, e))?;
-    Ok(Value::from(String::from_utf8(output.stdout)
-                   .map_err(|e| PluginError::new(500, e))?))
+    if !cmd.status().map_err(|e| PluginError::new(500, e))?.success() {
+        error!("{}", String::from_utf8(cmd.output().map_err(|e| PluginError::new(500, e))?
+                                       .stderr).map_err(|e| PluginError::new(500, e))?);
+        return Err(PluginError::new(500, "Checker plugin exited unsuccessfully"));
+    }
+    Ok(serde_json::from_slice(&output.stdout)
+                   .map_err(|e| PluginError::new(500, e))?)
 }
 
 fn run_checker(config: &config::Checker, state: Value)
         -> Result<Value, PluginError> {
     let mut cmd = Command::new(&config.plugin_path);
+    let (mut ipc_main, ipc_proc) = UnixStream::pair().map_err(|e| PluginError::new(500, e))?;
+    cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
+    ipc_main.write(state.to_string().as_bytes()).map_err(|e| PluginError::new(500, e))?;
+    if !cmd.status().map_err(|e| PluginError::new(500, e))?.success() {
+        error!("{}", String::from_utf8(cmd.output().map_err(|e| PluginError::new(500, e))?
+                                       .stderr).map_err(|e| PluginError::new(500, e))?);
+        return Err(PluginError::new(500, "Checker plugin exited unsuccessfully"));
+    }
     let output = cmd.output().map_err(|e| PluginError::new(500, e))?;
-    let json = Value::from(String::from_utf8(output.stderr)
-                           .map_err(|e| PluginError::new(500, e))?);
-    Ok(json)
+    Ok(serde_json::from_slice(&output.stdout)
+                   .map_err(|e| PluginError::new(500, e))?)
 }
 
 fn run_handler(config: &config::Handler, state: Value)
         -> Result<(), PluginError> {
     let mut cmd = Command::new(&config.plugin_path);
-    let _ = cmd.output().map_err(|e| PluginError::new(500, e))?;
-    Ok(())
+    let (mut ipc_main, ipc_proc) = UnixStream::pair().map_err(|e| PluginError::new(500, e))?;
+    cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
+    ipc_main.write(state.to_string().as_bytes()).map_err(|e| PluginError::new(500, e))?;
+    if cmd.status().map_err(|e| PluginError::new(500, e))?.success() {
+        Ok(())
+    } else {
+        error!("{}", String::from_utf8(cmd.output().map_err(|e| PluginError::new(500, e))?
+                                       .stderr).map_err(|e| PluginError::new(500, e))?);
+        Err(PluginError::new(500, "Handler plugin exited unsuccessfully"))
+    }
 }
 
 pub struct PluginManager {
@@ -142,12 +148,12 @@ impl PluginManager {
     }
 
     pub fn exec_trigger_plugin(&self, name: &String, req: Request<Body>)
-            -> Result<(&String, Value), PluginError> {
+            -> Result<(&String, bool, Value), PluginError> {
         let config = self.trigger_plugins.get(name)
             .ok_or(PluginError::new(500, format!("Failed to find trigger plugin {}",
                                                  name)))?;
         let state = run_trigger(config, req)?;
-        Ok((&config.next_plugin, state))
+        Ok((&config.next_plugin, config.use_checker, state))
     }
 
     pub fn exec_checker_plugin(&self, name: &String, state: Value)

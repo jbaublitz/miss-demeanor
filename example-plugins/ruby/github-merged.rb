@@ -1,5 +1,8 @@
-#!/usr/bin/ruby
+#!/usr/local/Cellar/ruby/2.5.1/bin/ruby
 
 require 'json'
+require 'socket'
 
-puts "{}"
+STDIN.read
+
+puts request.to_s
