@@ -17,7 +17,4 @@ impl Display for DemeanorError {
 }
 
 impl Error for DemeanorError {
-    fn description(&self) -> &str {
-        self.0.as_str()
-    }
 }

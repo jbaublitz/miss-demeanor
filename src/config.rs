@@ -49,30 +49,6 @@ impl From<String> for ServerType {
 }
 
 #[derive(Deserialize,PartialEq,Eq)]
-#[serde(from="String")]
-pub enum PluginType {
-    #[cfg(feature = "python")]
-    Python,
-    #[cfg(feature = "ruby")]
-    Ruby,
-    CABI,
-    UnknownPluginType,
-}
-
-impl From<String> for PluginType {
-    fn from(v: String) -> Self {
-        match v.as_str() {
-            #[cfg(feature = "python")]
-            "python" => PluginType::Python,
-            #[cfg(feature = "ruby")]
-            "ruby" => PluginType::Ruby,
-            "c_abi" => PluginType::CABI,
-            _ => PluginType::UnknownPluginType,
-        }
-    }
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
 pub struct Server {
     pub server_type: ServerType,
     pub listen_addr: String,
@@ -184,7 +160,6 @@ impl Hash for Handler {
 
 #[derive(Deserialize)]
 pub struct TomlConfig {
-    pub plugin_type: PluginType,
     pub servers: HashSet<Server>,
     pub triggers: HashSet<Trigger>,
     pub checkers: HashSet<Checker>,

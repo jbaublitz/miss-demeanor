@@ -2,15 +2,6 @@
 name = "miss-demeanor"
 version = "0.1.0"
 authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
-build = "build.rs"
-
-[build-dependencies.cc]
-optional = true
-version = "*"
-
-[build-dependencies.pkg-config]
-optional = true
-version = "*"
 
 [dependencies]
 env_logger = "0.5.13"
@@ -23,15 +14,9 @@ libc = "0.2.43"
 libloading = "0.5.0"
 log = "0.4.5"
 native-tls = "0.2.1"
+rand = "*"
 serde = "1.0.80"
 serde_derive = "1.0.80"
+serde_json = "*"
 tokio = "0.1.11"
 toml = "0.4.8"
-
-[dependencies.miss-demeanor-pluginutils]
-path = "./miss-demeanor-pluginutils"
-version = "0.1.0"
-
-[features]
-ruby = ["cc", "pkg-config"]
-python = ["cc", "pkg-config"]

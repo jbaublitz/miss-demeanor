@@ -18,7 +18,7 @@ use tokio::prelude::{Future,Stream};
 use tokio::prelude::future::lazy;
 
 use config::{self,TomlConfig};
-use plugins::{Plugin,PluginError,PluginManager};
+use plugins::{PluginError,PluginManager};
 
 mod listener;
 use self::listener::Listener;
@@ -50,10 +50,9 @@ impl TlsIdentity {
     }
 }
 
-fn spawn_server<S, P>(manager: Arc<PluginManager<P>>, endpoints: Arc<HashSet<config::Endpoint>>,
-                      stream: S)
-        where S: 'static + AsyncRead + AsyncWrite + Send,
-              P: 'static + Plugin + Sync + Send {
+fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::Endpoint>>,
+                   stream: S)
+        where S: 'static + AsyncRead + AsyncWrite + Send {
     tokio::spawn(lazy(move || {
         Http::new().serve_connection(stream,
             hyper::service::service_fn(move |req: Request<Body>| -> Result<Response<Body>, http::Error> {
@@ -67,8 +66,8 @@ fn spawn_server<S, P>(manager: Arc<PluginManager<P>>, endpoints: Arc<HashSet<con
                 manager.exec_trigger_plugin(first_plugin_name, req)
                         .and_then(|(name, state)| {
                     manager.exec_checker_plugin(name, state)
-                }).and_then(|(name, b, state)| {
-                    manager.exec_handler_plugin(name, b, state)
+                }).and_then(|(name, state)| {
+                    manager.exec_handler_plugin(name, state)
                 }).or_else(|e| Ok(e.to_response()))
             })
         ).map_err(|e| {
@@ -78,14 +77,13 @@ fn spawn_server<S, P>(manager: Arc<PluginManager<P>>, endpoints: Arc<HashSet<con
     }));
 }
 
-fn listen<L, S, C, E, P>(plugin_manager: Arc<PluginManager<P>>,
+fn listen<L, S, C, E>(plugin_manager: Arc<PluginManager>,
                             mut tls_acceptor: Option<Arc<native_tls::TlsAcceptor>>,
                             server: config::Server) -> Result<(), Box<Error>>
         where L: Listener<S, C, E>, C: 'static + AsyncRead + AsyncWrite + Debug + Send,
               S: 'static + Stream<Item=C> + Send,
               S::Error: Send,
-              E: 'static + Error + Send,
-              P: 'static + Plugin + Send + Sync {
+              E: 'static + Error + Send {
     let server_addr = server.listen_addr;
     let listener = L::bind(server_addr)?;
     let endpoints = Arc::new(server.endpoints);
@@ -108,20 +106,19 @@ fn listen<L, S, C, E, P>(plugin_manager: Arc<PluginManager<P>>,
     Ok(())
 }
 
-fn spawn_listener<L, S, C, E, P>(server: config::Server, manager: Arc<PluginManager<P>>,
-                                    identity: Arc<Option<TlsIdentity>>) -> Result<(), Box<Error>>
+fn spawn_listener<L, S, C, E>(server: config::Server, manager: Arc<PluginManager>,
+                              identity: Arc<Option<TlsIdentity>>) -> Result<(), Box<Error>>
         where L: Listener<S, C, E>, C: 'static + AsyncRead + AsyncWrite + Debug + Send,
               S: 'static + Stream<Item=C> + Send,
               S::Error: Send,
-              E: 'static + Error + Send,
-              P: 'static + Plugin + Send + Sync {
+              E: 'static + Error + Send {
     let mut tls_acceptor = None;
     if let Some(ident) = identity.as_ref() {
         tls_acceptor = native_tls::TlsAcceptor::new(ident.into_identity()?).map(Arc::new).ok();
     }
 
     tokio::spawn(lazy(move || {
-        listen::<L, S, C, E, P>(manager, tls_acceptor, server).map_err(|e| {
+        listen::<L, S, C, E>(manager, tls_acceptor, server).map_err(|e| {
             error!("{}", e);
             ()
         })
@@ -130,13 +127,13 @@ fn spawn_listener<L, S, C, E, P>(server: config::Server, manager: Arc<PluginMana
     Ok(())
 }
 
-pub struct WebhookServer<P> {
+pub struct WebhookServer {
     identity: Option<TlsIdentity>,
-    plugin_manager: Arc<PluginManager<P>>,
+    plugin_manager: Arc<PluginManager>,
 }
 
-impl<P> WebhookServer<P> where P: 'static + Plugin + Send + Sync {
-    pub fn new(use_tls: UseTls, plugin_manager: PluginManager<P>) -> Result<Self, Box<Error>> {
+impl WebhookServer {
+    pub fn new(use_tls: UseTls, plugin_manager: PluginManager) -> Result<Self, Box<Error>> {
         let identity = match use_tls {
             UseTls::Yes(identity) => Some(identity),
             UseTls::No => None,
@@ -152,7 +149,7 @@ impl<P> WebhookServer<P> where P: 'static + Plugin + Send + Sync {
             for server in config.servers.into_iter() {
                 match server.server_type {
                     config::ServerType::Webhook => {
-                        spawn_listener::<TcpListener, net::tcp::Incoming, TcpStream, io::Error, P>(
+                        spawn_listener::<TcpListener, net::tcp::Incoming, TcpStream, io::Error>(
                             server, Arc::clone(&plugin_manager_clone), Arc::clone(&identity)
                         ).map_err(|e| {
                             error!("{}", e);
@@ -160,7 +157,7 @@ impl<P> WebhookServer<P> where P: 'static + Plugin + Send + Sync {
                         })?
                     },
                     config::ServerType::UnixSocket => {
-                        spawn_listener::<UnixListener, net::unix::Incoming, UnixStream, io::Error, P>(
+                        spawn_listener::<UnixListener, net::unix::Incoming, UnixStream, io::Error>(
                             server, Arc::clone(&plugin_manager_clone), Arc::clone(&identity)
                         ).map_err(|e| {
                             error!("{}", e);
