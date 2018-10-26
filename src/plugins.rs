@@ -1,15 +1,11 @@
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{self,Display};
-use std::io::{self,Write};
-use std::os::unix::io::{FromRawFd,AsRawFd};
-use std::os::unix::net::UnixStream;
+use std::io::{self,Read,Write};
 use std::process::{Command,Stdio};
 
-use hyper::{Body,Request,Response,StatusCode};
-use serde_json::Value;
-use tokio::io::AsyncWrite;
-use tokio::prelude::{future,stream,Async,Future,Stream};
+use hyper::{Body,Response,StatusCode};
+use serde_json::{self,Value};
 
 use config::{self,TomlConfig};
 
@@ -42,79 +38,81 @@ impl Display for PluginError {
     }
 }
 
-impl Error for PluginError {
-}
+impl Error for PluginError {}
 
+fn run_trigger(config: &config::Trigger, req_json: Value) -> Result<Value, PluginError> {
+    let mut cmd = Command::new(&config.plugin_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| PluginError::new(500, e))?;
+    cmd.stdin.as_mut().ok_or(PluginError::new(500, "Could not access stdin"))?.write(req_json.to_string().as_bytes())
+        .map_err(|e| PluginError::new(500, e))?;
 
-fn run_trigger(config: &config::Trigger, req: Request<Body>) -> Result<Value, PluginError> {
-    let mut cmd = Command::new(&config.plugin_path);
-    let (mut ipc_main, ipc_proc) = UnixStream::pair().map_err(|e| PluginError::new(500, e))?;
-
-    let mut json = json!({
-        "method": req.method().as_str(),
-        "uri": req.uri().to_string(),
-        "headers": {}
-    });
-    for (header, value) in req.headers() {
-        let headers = json.get_mut("headers");
-        if let Some(Value::Object(map)) = headers {
-            map.insert(header.to_string(), Value::from(value.to_str().map_err(|e| {
-                PluginError::new(500, e)
-            })?));
-        }
+    if !cmd.wait().map_err(|e| PluginError::new(500, e))?.success() {
+        let mut stderr_string = String::new();
+        cmd.stderr.ok_or(PluginError::new(500, "Could not access stderr"))?.read_to_string(&mut stderr_string)
+            .map_err(|e| PluginError::new(500, e))?;
+        error!("{}", stderr_string);
+        return Err(PluginError::new(500, "Trigger plugin exited unsuccessfully"));
     }
-    cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
+    let mut output_string = String::new();
+    cmd.stdout.ok_or(PluginError::new(500, "Failed to access stdout"))?.read_to_string(&mut output_string)
+        .map_err(|e| PluginError::new(500, e))?;
 
-    ipc_main.write(json.to_string().as_bytes()).map_err(|e| PluginError::new(500, e))?;
-    tokio::spawn(req.into_body().concat2().map_err(|e| {
-        error!("{}", e);
-        ()
-    }).and_then(move |b| {
-        ipc_main.write(&b).map(|_| ()).map_err(|e| {
-            error!("{}", e);
-            ()
-        })
-    }));
-
-    let output = cmd.output().map_err(|e| PluginError::new(500, e))?;
-    if !cmd.status().map_err(|e| PluginError::new(500, e))?.success() {
-        error!("{}", String::from_utf8(cmd.output().map_err(|e| PluginError::new(500, e))?
-                                       .stderr).map_err(|e| PluginError::new(500, e))?);
-        return Err(PluginError::new(500, "Checker plugin exited unsuccessfully"));
-    }
-    Ok(serde_json::from_slice(&output.stdout)
-                   .map_err(|e| PluginError::new(500, e))?)
+    Ok(serde_json::from_str(&output_string.trim()).map_err(|e| PluginError::new(500, e))?)
 }
 
 fn run_checker(config: &config::Checker, state: Value)
         -> Result<Value, PluginError> {
-    let mut cmd = Command::new(&config.plugin_path);
-    let (mut ipc_main, ipc_proc) = UnixStream::pair().map_err(|e| PluginError::new(500, e))?;
-    cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
-    ipc_main.write(state.to_string().as_bytes()).map_err(|e| PluginError::new(500, e))?;
-    if !cmd.status().map_err(|e| PluginError::new(500, e))?.success() {
-        error!("{}", String::from_utf8(cmd.output().map_err(|e| PluginError::new(500, e))?
-                                       .stderr).map_err(|e| PluginError::new(500, e))?);
-        return Err(PluginError::new(500, "Checker plugin exited unsuccessfully"));
+    let mut cmd = Command::new(&config.plugin_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| PluginError::new(500, e))?;
+    cmd.stdin.as_mut().ok_or(PluginError::new(500, "Could not access stdin"))?.write(state.to_string().as_bytes())
+        .map_err(|e| PluginError::new(500, e))?;
+
+    if !cmd.wait().map_err(|e| PluginError::new(500, e))?.success() {
+        let mut stderr_string = String::new();
+        cmd.stderr.ok_or(PluginError::new(500, "Could not access stderr"))?.read_to_string(&mut stderr_string)
+            .map_err(|e| PluginError::new(500, e))?;
+        error!("{}", stderr_string);
+        return Err(PluginError::new(500, "Trigger plugin exited unsuccessfully"));
     }
-    let output = cmd.output().map_err(|e| PluginError::new(500, e))?;
-    Ok(serde_json::from_slice(&output.stdout)
-                   .map_err(|e| PluginError::new(500, e))?)
+    let mut output_string = String::new();
+    cmd.stdout.ok_or(PluginError::new(500, "Failed to access stdout"))?.read_to_string(&mut output_string)
+        .map_err(|e| PluginError::new(500, e))?;
+
+    Ok(serde_json::from_str(&output_string.trim()).map_err(|e| PluginError::new(500, e))?)
 }
 
 fn run_handler(config: &config::Handler, state: Value)
         -> Result<(), PluginError> {
-    let mut cmd = Command::new(&config.plugin_path);
-    let (mut ipc_main, ipc_proc) = UnixStream::pair().map_err(|e| PluginError::new(500, e))?;
-    cmd.stdin(unsafe { Stdio::from_raw_fd(ipc_proc.as_raw_fd()) });
-    ipc_main.write(state.to_string().as_bytes()).map_err(|e| PluginError::new(500, e))?;
-    if cmd.status().map_err(|e| PluginError::new(500, e))?.success() {
-        Ok(())
-    } else {
-        error!("{}", String::from_utf8(cmd.output().map_err(|e| PluginError::new(500, e))?
-                                       .stderr).map_err(|e| PluginError::new(500, e))?);
-        Err(PluginError::new(500, "Handler plugin exited unsuccessfully"))
+    let mut cmd = Command::new(&config.plugin_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| PluginError::new(500, e))?;
+    cmd.stdin.as_mut().ok_or(PluginError::new(500, "Could not access stdin"))?.write(state.to_string().as_bytes())
+        .map_err(|e| PluginError::new(500, e))?;
+
+    if !cmd.wait().map_err(|e| PluginError::new(500, e))?.success() {
+        let mut stderr_string = String::new();
+        cmd.stderr.ok_or(PluginError::new(500, "Could not access stderr"))?.read_to_string(&mut stderr_string)
+            .map_err(|e| PluginError::new(500, e))?;
+        error!("{}", stderr_string);
+        return Err(PluginError::new(500, "Trigger plugin exited unsuccessfully"));
     }
+    let mut output_string = String::new();
+    cmd.stdout.ok_or(PluginError::new(500, "Failed to access stdout"))?.read_to_string(&mut output_string)
+        .map_err(|e| PluginError::new(500, e))?;
+    info!("{}", output_string);
+
+    Ok(())
 }
 
 pub struct PluginManager {
@@ -147,7 +145,7 @@ impl PluginManager {
         })
     }
 
-    pub fn exec_trigger_plugin(&self, name: &String, req: Request<Body>)
+    pub fn exec_trigger_plugin(&self, name: &String, req: Value)
             -> Result<(&String, bool, Value), PluginError> {
         let config = self.trigger_plugins.get(name)
             .ok_or(PluginError::new(500, format!("Failed to find trigger plugin {}",

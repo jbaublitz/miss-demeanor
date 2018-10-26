@@ -3,22 +3,24 @@ use std::error::Error;
 use std::fmt::Debug;
 use std::io;
 use std::process;
+use std::str;
 use std::sync::Arc;
 
-use http;
-use hyper;
 use hyper::{Body,Request,Response};
 use hyper::server::conn::Http;
+use hyper::service::Service;
 use hyper_tls;
 use native_tls;
+use serde_json::Value;
 use tokio;
 use tokio::io::{AsyncRead,AsyncWrite};
 use tokio::net::{self,TcpStream,UnixStream};
 use tokio::prelude::{Future,Stream};
-use tokio::prelude::future::lazy;
+use tokio::prelude::future::{self,lazy};
 
 use config::{self,TomlConfig};
-use plugins::{PluginError,PluginManager};
+use err::DemeanorError;
+use plugins::PluginManager;
 
 mod listener;
 use self::listener::Listener;
@@ -50,31 +52,70 @@ impl TlsIdentity {
     }
 }
 
-fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::Endpoint>>,
+pub struct PluginService {
+    plugin_manager: Arc<PluginManager>,
+    endpoints: Arc<HashSet<config::Endpoint>>,
+}
+
+impl Service for PluginService {
+    type ReqBody = Body;
+    type ResBody = Body;
+    type Error = DemeanorError;
+    type Future = Box<Future<Item=Response<Body>, Error=DemeanorError> + Send>;
+
+    fn call(&mut self, req: Request<Body>) -> Self::Future {
+        let uri = req.uri().to_string();
+        let plugin_manager = Arc::clone(&self.plugin_manager);
+        let endpoints = Arc::clone(&self.endpoints);
+        let mut req_json = json!({
+            "method": req.method().as_str(),
+            "uri": uri,
+            "headers": {},
+        });
+        for (header, value) in req.headers() {
+            let headers = req_json.get_mut("headers");
+            if let Some(Value::Object(map)) = headers {
+                map.insert(header.to_string(), Value::from(match value.to_str() {
+                    Ok(s) => s,
+                    Err(e) => return Box::new(future::err(DemeanorError::new(e))),
+                }));
+            }
+        }
+
+        Box::new(lazy(move || {
+            req.into_body().concat2()
+        }).map_err(|e| DemeanorError::new(e)).and_then(move |b| {
+            req_json.as_object_mut().and_then(|obj| {
+                obj.insert("body".to_string(), Value::from(str::from_utf8(&b).unwrap_or("")))
+            });
+            let first_plugin_name = match req_json.get("uri").and_then(|v| v.as_str())
+                .and_then(|u| endpoints.get(&u.to_string()))
+                .and_then(|endpoint| Some(&endpoint.trigger_name)) {
+                Some(pn) => pn,
+                None => return Box::new(future::err(DemeanorError::new("Endpoint not found"))),
+            };
+            Box::new(future::ok(
+                    plugin_manager.exec_trigger_plugin(first_plugin_name, req_json)
+                    .and_then(|(name, use_checker, state)| {
+                if use_checker {
+                    plugin_manager.exec_checker_plugin(name, state)
+                } else {
+                    Ok((name, state))
+                }
+            }).and_then(|(name, state)| {
+                plugin_manager.exec_handler_plugin(name, state)
+            }).unwrap_or_else(|e| e.to_response())))
+        }))
+    }
+}
+
+fn spawn_server<S>(manager: Arc<PluginManager>,
+                   endpoints: Arc<HashSet<config::Endpoint>>,
                    stream: S)
         where S: 'static + AsyncRead + AsyncWrite + Send {
     tokio::spawn(lazy(move || {
-        Http::new().serve_connection(stream,
-            hyper::service::service_fn(move |req: Request<Body>| -> Result<Response<Body>, http::Error> {
-                let path = req.uri().path().to_string();
-                let first_plugin_name = match endpoints.get(&path)
-                    .and_then(|endpoint| Some(&endpoint.trigger_name)) {
-                    Some(pn) => pn,
-                    None => return Ok(PluginError::new(404, "Endpoint not found").to_response()),
-                };
-
-                manager.exec_trigger_plugin(first_plugin_name, req)
-                        .and_then(|(name, use_checker, state)| {
-                    if use_checker {
-                        manager.exec_checker_plugin(name, state)
-                    } else {
-                        Ok((name, state))
-                    }
-                }).and_then(|(name, state)| {
-                    manager.exec_handler_plugin(name, state)
-                }).or_else(|e| Ok(e.to_response()))
-            })
-        ).map_err(|e| {
+        Http::new().serve_connection(stream, PluginService { plugin_manager: manager,
+                                                             endpoints }).map_err(|e| {
             error!("Failed to serve HTTP request: {}", e);
             ()
         })
@@ -82,8 +123,8 @@ fn spawn_server<S>(manager: Arc<PluginManager>, endpoints: Arc<HashSet<config::E
 }
 
 fn listen<L, S, C, E>(plugin_manager: Arc<PluginManager>,
-                            mut tls_acceptor: Option<Arc<native_tls::TlsAcceptor>>,
-                            server: config::Server) -> Result<(), Box<Error>>
+                      mut tls_acceptor: Option<Arc<native_tls::TlsAcceptor>>,
+                      server: config::Server) -> Result<(), Box<Error>>
         where L: Listener<S, C, E>, C: 'static + AsyncRead + AsyncWrite + Debug + Send,
               S: 'static + Stream<Item=C> + Send,
               S::Error: Send,

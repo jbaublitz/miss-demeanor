@@ -1,8 +1,5 @@
-#![feature(map_get_key_value)]
 extern crate env_logger;
-extern crate futures;
 extern crate getopts;
-extern crate http;
 extern crate hyper;
 extern crate hyper_tls;
 extern crate libc;
@@ -19,6 +16,7 @@ extern crate tokio;
 extern crate toml;
 
 mod config;
+mod err;
 mod plugins;
 mod webhook;
 
