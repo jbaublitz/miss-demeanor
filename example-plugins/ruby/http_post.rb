@@ -1,3 +1,3 @@
 #!/usr/bin/ruby
 
-puts STDIN.read
+#puts STDIN.read

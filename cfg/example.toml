@@ -1,15 +1,15 @@
-plugin_type = "ruby"
+plugin_type = "cabi"
 
-[[servers]]
+[server]
 server_type = "webhook"
 listen_addr = "127.0.0.1:8080"
 use_tls = true
 
-[[servers.endpoints]]
+[server.endpoints]
 path = "/pr"
 trigger_name = "github-pr"
 
-[[servers.endpoints]]
+[server.endpoints]
 path = "/merged"
 trigger_name = "github-merged"
 
