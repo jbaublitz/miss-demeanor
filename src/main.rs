@@ -10,10 +10,8 @@ extern crate native_tls;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
 extern crate serde_json;
 extern crate tokio;
-extern crate tokio_signal;
 extern crate toml;
 
 mod config;
@@ -26,16 +24,6 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Read;
 use std::process;
-use std::sync::mpsc::channel;
-
-use tokio::prelude::{Future,IntoFuture,Stream};
-use tokio::prelude::future::lazy;
-use tokio_signal::unix::{Signal,SIGINT};
-
-use config::PluginType;
-use plugins::CABIPluginManager;
-#[cfg(feature = "ruby")]
-use plugins::RubyPluginManager;
 
 pub struct Args {
     pub use_tls: webhook::UseTls,
@@ -74,39 +62,7 @@ fn parse_opts() -> Result<(webhook::UseTls, String), Box<Error>> {
     Ok(args)
 }
 
-#[cfg(feature = "ruby")]
-extern "C" {
-    fn ruby_setup() -> libc::c_int;
-    fn ruby_default_signal(sig: libc::c_int);
-    fn ruby_finalize();
-}
-
 fn main() {
-    let mut runtime = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(e) => {
-            error!("{}", e);
-            process::exit(1);
-        }
-    };
-
-    #[cfg(feature = "ruby")]
-    {
-        runtime.spawn(Signal::new(SIGINT).flatten_stream().for_each(|_| {
-            unsafe { ruby_default_signal(libc::SIGINT) };
-            Ok(())
-        }).map_err(|e| {
-            error!("{}", e);
-            ()
-        }));
-
-        let state = unsafe { ruby_setup() };
-        if state != 0 {
-            error!("Failed to initialize Ruby");
-            process::exit(1);
-        }
-    }
-
     env_logger::Builder::new().filter_level(log::LevelFilter::Info).init();
     let (use_tls, config_path) = match parse_opts() {
         Ok(cfg) => cfg,
@@ -115,7 +71,7 @@ fn main() {
             process::exit(1);
         }
     };
-    let mut config = match config::parse_config(config_path) {
+    let config = match config::parse_config(config_path) {
         Ok(c) => c,
         Err(e) => {
             error!("{}", e);
@@ -123,46 +79,18 @@ fn main() {
         }
     };
 
-    let (sender, receiver) = channel();
-    let server = match webhook::WebhookServer::new(use_tls) {
+    let server = match webhook::WebhookServer::new(use_tls, config) {
         Ok(ws) => ws,
         Err(e) => {
             error!("{}", e);
             process::exit(1);
         },
     };
-    match config.plugin_type {
-        #[cfg(feature = "ruby")]
-        PluginType::Ruby => {
-            let pm = match RubyPluginManager::new(&mut config) {
-                Ok(pm) => pm,
-                Err(e) => {
-                    error!("{}", e);
-                    process::exit(1);
-                },
-            };
-        },
-        PluginType::CABI => {
-            let pm = match CABIPluginManager::new(&mut runtime, &mut config) {
-                Ok(pm) => pm,
-                Err(e) => {
-                    error!("{}", e);
-                    process::exit(1);
-                },
-            };
-        },
-        PluginType::UnknownPluginType => {
-            error!("Unknown plugin type - exiting...");
-            process::exit(1);
-        }
-    };
-    match server.serve(&mut runtime, sender, config.server) {
+    match server.serve() {
         Ok(()) => (),
         Err(e) => {
             error!("{}", e);
             process::exit(1);
         }
     };
-    #[cfg(feature = "ruby")]
-    unsafe { ruby_finalize() };
 }

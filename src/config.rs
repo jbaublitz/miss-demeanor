@@ -32,26 +32,6 @@ impl From<String> for RetryStrategy {
 
 #[derive(Deserialize,PartialEq,Eq)]
 #[serde(from="String")]
-pub enum PluginType {
-    #[cfg(feature = "ruby")]
-    Ruby,
-    CABI,
-    UnknownPluginType,
-}
-
-impl From<String> for PluginType {
-    fn from(v: String) -> Self {
-        match v.as_str() {
-            #[cfg(feature = "ruby")]
-            "ruby" => PluginType::Ruby,
-            "cabi" => PluginType::CABI,
-            _ => PluginType::UnknownPluginType,
-        }
-    }
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
-#[serde(from="String")]
 pub enum ServerType {
     Webhook,
     UnixSocket,
@@ -174,7 +154,6 @@ impl Hash for Handler {
 
 #[derive(Deserialize)]
 pub struct TomlConfig {
-    pub plugin_type: PluginType,
     pub server: Server,
     pub triggers: HashSet<Trigger>,
     pub checkers: HashSet<Checker>,
