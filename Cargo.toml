@@ -18,5 +18,9 @@ serde_json = "*"
 tokio = "0.1.11"
 toml = "0.4.8"
 
+[dependencies.miss-demeanor-pluginutils]
+version = "0.1.0"
+path = "./miss-demeanor-pluginutils"
+
 [features]
 ruby = []

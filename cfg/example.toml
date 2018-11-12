@@ -1,45 +1,16 @@
-plugin_type = "cabi"
-
 [server]
 server_type = "webhook"
 listen_addr = "127.0.0.1:8080"
 use_tls = true
 
-[server.endpoints]
+[[server.endpoints]]
 path = "/pr"
 trigger_name = "github-pr"
 
-[server.endpoints]
+[[server.endpoints]]
 path = "/merged"
 trigger_name = "github-merged"
 
 [[triggers]]
 name = "github-merged"
-use_checker = false
-next_plugin = "http_post"
-plugin_path = "./example-plugins/ruby/github-merged.rb"
-
-[[triggers]]
-name = "github-pr"
-use_checker = true
-next_plugin = "jira"
-plugin_path = "./example-plugins/ruby/github-pr.rb"
-
-[[checkers]]
-name = "jira"
-next_plugin = "github-handler"
-plugin_path = "./example-plugins/ruby/jira.rb"
-retry_strategy = "linear"
-strict_evaluation = true
-
-[[handlers]]
-name = "http_post"
-plugin_type = "ruby"
-plugin_path = "./example-plugins/ruby/http_post.rb"
-retry_strategy = "linear"
-
-[[handlers]]
-name = "github-handler"
-plugin_type = "ruby"
-plugin_path = "./example-plugins/ruby/github.rb"
-retry_strategy = "linear"
+plugin_path = "./example-plugins/golang/github-merged.so"

@@ -6,6 +6,7 @@ extern crate libc;
 extern crate libloading;
 #[macro_use]
 extern crate log;
+extern crate miss_demeanor_pluginutils;
 extern crate native_tls;
 extern crate serde;
 #[macro_use]

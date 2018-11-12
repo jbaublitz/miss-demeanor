@@ -77,8 +77,6 @@ impl Hash for Endpoint {
 #[derive(Deserialize,PartialEq,Eq)]
 pub struct Trigger {
     pub name: String,
-    pub use_checker: bool,
-    pub next_plugin: String,
     pub plugin_path: String,
 }
 
@@ -100,64 +98,10 @@ impl Hash for Trigger {
     }
 }
 
-#[derive(Deserialize,PartialEq,Eq)]
-pub struct Checker {
-    pub name: String,
-    pub next_plugin: String,
-    pub retry_strategy: RetryStrategy,
-    pub strict_evaluation: bool,
-    pub plugin_path: String,
-}
-
-impl PluginConfig for Checker {
-    fn get_plugin_path(&self) -> &str {
-        self.plugin_path.as_str()
-    }
-}
-
-impl Borrow<String> for Checker {
-    fn borrow(&self) -> &String {
-        &self.name
-    }
-}
-
-impl Hash for Checker {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
-        self.name.hash(state)
-    }
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
-pub struct Handler {
-    pub name: String,
-    pub retry_strategy: RetryStrategy,
-    pub plugin_path: String,
-}
-
-impl PluginConfig for Handler {
-    fn get_plugin_path(&self) -> &str {
-        self.plugin_path.as_str()
-    }
-}
-
-impl Borrow<String> for Handler {
-    fn borrow(&self) -> &String {
-        &self.name
-    }
-}
-
-impl Hash for Handler {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
-        self.name.hash(state)
-    }
-}
-
 #[derive(Deserialize)]
 pub struct TomlConfig {
     pub server: Server,
     pub triggers: HashSet<Trigger>,
-    pub checkers: HashSet<Checker>,
-    pub handlers: HashSet<Handler>,
 }
 
 pub fn parse_config(file_path: String) -> Result<TomlConfig, Box<Error>> {

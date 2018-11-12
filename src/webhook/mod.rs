@@ -9,15 +9,16 @@ use hyper::{Body,Request,Response};
 use hyper::server::conn::Http;
 use hyper::service;
 use hyper_tls;
+use miss_demeanor_pluginutils::CRequest;
 use native_tls;
 use tokio;
 use tokio::io::{AsyncRead,AsyncWrite};
 use tokio::net::{self,TcpStream,UnixStream};
 use tokio::prelude::{Future,Stream};
 
-use config::{self,Checker,Handler,Server,TomlConfig,Trigger};
+use config::{self,Server,TomlConfig};
 use err::DemeanorError;
-use plugins::{CRequest,Plugin,PluginError};
+use plugins::{Plugin,PluginError};
 
 mod listener;
 use self::listener::Listener;
@@ -52,9 +53,7 @@ impl TlsIdentity {
 pub struct WebhookServer {
     identity: Option<TlsIdentity>,
     server: Arc<Server>,
-    triggers: Arc<HashSet<Plugin<Trigger>>>,
-    checkers: Arc<HashSet<Plugin<Checker>>>,
-    handlers: Arc<HashSet<Plugin<Handler>>>,
+    triggers: Arc<HashSet<Plugin>>,
 }
 
 impl WebhookServer {
@@ -68,28 +67,15 @@ impl WebhookServer {
         for trigger in toml_config.triggers.drain() {
             trigger_plugins_hs.insert(Plugin::new(trigger)?);
         }
-        let mut checker_plugins_hs = HashSet::new();
-        for checker in toml_config.checkers.drain() {
-            checker_plugins_hs.insert(Plugin::new(checker)?);
-        }
-        let mut handler_plugins_hs = HashSet::new();
-        for handler in toml_config.handlers.drain() {
-            handler_plugins_hs.insert(Plugin::new(handler)?);
-        }
 
         let trigger_plugins = Arc::new(trigger_plugins_hs);
-        let checker_plugins = Arc::new(checker_plugins_hs);
-        let handler_plugins = Arc::new(handler_plugins_hs);
 
         Ok(WebhookServer { identity, server: Arc::new(toml_config.server),
-                           triggers: trigger_plugins, checkers: checker_plugins,
-                           handlers: handler_plugins })
+                           triggers: trigger_plugins, })
     }
 
     fn service(req: Request<Body>, server_box: Arc<Server>,
-               trigger_plugins_box: Arc<HashSet<Plugin<Trigger>>>,
-               checker_plugins_box: Arc<HashSet<Plugin<Checker>>>,
-               handler_plugins_box: Arc<HashSet<Plugin<Handler>>>)
+               trigger_plugins_box: Arc<HashSet<Plugin>>)
             -> Box<Future<Item=Response<Body>, Error=PluginError> + Send> {
         let (parts, body) = req.into_parts();
         Box::new(body.concat2().map_err(|e| {
@@ -139,63 +125,18 @@ impl WebhookServer {
                 body,
             };
 
-            let trigger = match trigger_plugins_box.get(name) {
-                Some(t) => t,
-                None => {
-                    error!("Trigger plugin {} not found", name);
-                    return Ok(PluginError::new(500, format!("Plugin not found"))
-                              .to_response());
-                },
-            };
-            let state = match trigger.run_trigger(crequest) {
-                Ok(ret) => ret,
-                Err(e) => {
-                    error!("{}", e);
-                    return Ok(PluginError::new(500, "Trigger phase failed").to_response());
-                },
-            };
-
-            let checker = match checker_plugins_box.get(&trigger.config.next_plugin) {
-                Some(t) => t,
-                None => {
-                    error!("Checker plugin {} not found", name);
-                    return Ok(PluginError::new(500, format!("Plugin not found"))
-                              .to_response());
-                },
-            };
-            let (state, compliant) = if trigger.config.use_checker {
-                match checker.run_checker(state) {
-                    Ok(ret) => ret,
-                    Err(e) => {
-                        error!("{}", e);
-                        return Ok(PluginError::new(500, "Checker phase failed").to_response());
-                    },
-                }
-            } else {
-                (state, true)    
-            };
-
-            let checker = match checker_plugins_box.get(&trigger.config.next_plugin) {
-                Some(t) => t,
-                None => {
-                    error!("Checker plugin {} not found", name);
-                    return Ok(PluginError::new(500, format!("Plugin not found"))
-                              .to_response());
-                },
-            };
-            let (state, compliant) = if trigger.config.use_checker {
-                match checker.run_checker(state) {
-                    Ok(ret) => ret,
-                    Err(e) => {
-                        error!("{}", e);
-                        return Ok(PluginError::new(500, "Checker phase failed").to_response());
-                    },
-                }
-            } else {
-                (state, true)    
-            };
+            let trigger = trigger_plugins_box.get(name).ok_or_else(|| {
+                error!("Trigger plugin {} not found", name);
+                PluginError::new(500, "Plugin not found")
+            })?;
+            trigger.run_trigger(crequest).map_err(|e| {
+                error!("Trigger plugin failed with error: {}", e);
+                PluginError::new(500, "Trigger phase failed")
+            })?;
 
             Ok(Response::new(Body::from("Success!")))
+        }).or_else(|e| {
+            Ok(e.to_response())
         }))
     }
 
@@ -211,10 +152,6 @@ impl WebhookServer {
 
         let listener = L::bind(&self.server.listen_addr)?;
 
-        let server = Arc::clone(&self.server);
-        let trigger_plugins = Arc::clone(&self.triggers);
-        let checker_plugins = Arc::clone(&self.checkers);
-        let handler_plugins = Arc::clone(&self.handlers);
         tokio::run(listener.for_each(move |sock| {
             let stream = if let Some(ref mut acceptor) = tls_acceptor.as_mut() {
                 let tls_stream = match acceptor.accept(sock) {
@@ -230,17 +167,12 @@ impl WebhookServer {
             };
 
             let server_spawn = Arc::clone(&self.server);
-            let trigger_plugins_spawn = Arc::clone(&trigger_plugins);
-            let checker_plugins_spawn = Arc::clone(&checker_plugins);
-            let handler_plugins_spawn = Arc::clone(&handler_plugins);
+            let trigger_plugins_spawn = Arc::clone(&self.triggers);
             tokio::spawn(Http::new().serve_connection(stream, service::service_fn(move |req| {
                 let server_box = Arc::clone(&server_spawn);
                 let trigger_plugins_box = Arc::clone(&trigger_plugins_spawn);
-                let checker_plugins_box = Arc::clone(&checker_plugins_spawn);
-                let handler_plugins_box = Arc::clone(&handler_plugins_spawn);
 
-                Self::service(req, server_box, trigger_plugins_box, checker_plugins_box,
-                              handler_plugins_box)
+                Self::service(req, server_box, trigger_plugins_box)
             })).map_err(|e| {
                 error!("{}", e);
                 ()
