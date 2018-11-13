@@ -4,7 +4,7 @@ use std::io;
 
 use libc;
 use libloading::{Library,Symbol};
-use miss_demeanor_pluginutils::CRequest;
+use missdemeanor::CRequest;
 
 use config::Trigger;
 

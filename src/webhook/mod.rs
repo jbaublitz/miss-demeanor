@@ -9,7 +9,7 @@ use hyper::{Body,Request,Response};
 use hyper::server::conn::Http;
 use hyper::service;
 use hyper_tls;
-use miss_demeanor_pluginutils::CRequest;
+use missdemeanor::CRequest;
 use native_tls;
 use tokio;
 use tokio::io::{AsyncRead,AsyncWrite};
