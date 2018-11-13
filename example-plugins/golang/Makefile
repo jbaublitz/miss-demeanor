@@ -1,5 +1,5 @@
 github-merged.so: trigger.go
-	cd miss-demeanor-pluginutils && cargo rustc --release -- --crate-type=staticlib
+	cd miss-demeanor-pluginutils && cargo build --release
 	cp miss-demeanor-pluginutils/target/release/libmissdemeanor.a .
 	go build -buildmode=c-shared -o github-merged.so trigger.go
 
