@@ -1,5 +1,5 @@
 # miss-demeanor
-An audit compliance checker with a plugin interface and interpreted language bindings
+An audit compliance checker with a plugin interface
 
 ## Why miss-demeanor?
 1. The name is clever and Missy Elliott is great.
