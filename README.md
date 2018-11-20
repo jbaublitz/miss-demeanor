@@ -100,6 +100,8 @@ import "fmt"
 func trigger(http_request unsafe.Pointer) C.int {
   fmt.Println(C.GoString(C.request_get_method(http_request)))
 }
+
+func main {}
 ```
 
 Rust example:
