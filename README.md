@@ -19,6 +19,12 @@ and returns an integer and build anything else you need around
 it.
 5. See 1. It is still the most compelling reason.
 
+## Building miss-demeanor
+Install the Rust toolchain. Instructions can be found [here](https://rustup.rs/).
+
+Navigate to `miss-demeanor/` and run `cargo build --release`.
+Your executable will be located at `./target/release/miss-demeanor`.
+
 ## Config format
 The config file is written in TOML.
 
