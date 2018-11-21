@@ -25,6 +25,16 @@ Install the Rust toolchain. Instructions can be found [here](https://rustup.rs/)
 Navigate to `miss-demeanor/` and run `cargo build --release`.
 Your executable will be located at `./target/release/miss-demeanor`.
 
+## Using TLS with miss-demeanor
+Currently the TLS library that miss-demeanor uses only supports a PCKS12/DER identity format.
+This is not my choice and I hope to eventually be able to support PEM identites for the server.
+That being said, there are test certs available for you to take a look at checked into the
+project that I will ensure are up to date and can be used as a first step when evaluating
+if miss-demeanor is the right solution for you.
+
+The invocation is pretty simple: provide the path to `-f` for your PKCS12 identity file and use
+the environment variable `PKCS12_PASSWORD` to supply the password.
+
 ## Config format
 The config file is written in TOML.
 
@@ -96,7 +106,7 @@ Golang example:
 
 ```
 // #include "trigger.h"
-// #cgo LDFLAGS: -lmissdemeanor
+// #cgo LDFLAGS: -lmissdemeanor -ldl
 import "C"
 import "unsafe"
 
