@@ -16,6 +16,7 @@ serde = "1.0.80"
 serde_derive = "1.0.80"
 serde_json = "*"
 tokio = "0.1.11"
+tokio-tls = "0.2.0"
 toml = "0.4.8"
 
 [dependencies.miss-demeanor-pluginutils]

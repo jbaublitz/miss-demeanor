@@ -13,6 +13,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio;
+extern crate tokio_tls;
 extern crate toml;
 
 mod config;

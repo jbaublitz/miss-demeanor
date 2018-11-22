@@ -8,13 +8,13 @@ use std::sync::Arc;
 use hyper::{Body,Request,Response};
 use hyper::server::conn::Http;
 use hyper::service;
-use hyper_tls;
 use missdemeanor::CRequest;
 use native_tls;
 use tokio;
 use tokio::io::{AsyncRead,AsyncWrite};
 use tokio::net::{self,TcpStream,UnixStream};
 use tokio::prelude::{Future,Stream};
+use tokio_tls::TlsAcceptor;
 
 use config::{self,Server,TomlConfig};
 use err::DemeanorError;
@@ -147,36 +147,41 @@ impl WebhookServer {
                   E: 'static + Error + Send {
         let mut tls_acceptor = None;
         if let Some(ident) = self.identity.as_ref() {
-            tls_acceptor = native_tls::TlsAcceptor::new(ident.into_identity()?).map(Arc::new).ok();
+            let acceptor = native_tls::TlsAcceptor::new(ident.into_identity()?)?;
+            tls_acceptor = Some(TlsAcceptor::from(acceptor));
         }
 
         let listener = L::bind(&self.server.listen_addr)?;
 
         tokio::run(listener.for_each(move |sock| {
-            let stream = if let Some(ref mut acceptor) = tls_acceptor.as_mut() {
-                let tls_stream = match acceptor.accept(sock) {
-                    Ok(st) => st,
-                    Err(e) => {
-                        error!("{}", e);
-                        return Ok(());
-                    }
-                };
-                hyper_tls::MaybeHttpsStream::from(tls_stream)
-            } else {
-                hyper_tls::MaybeHttpsStream::from(sock)
-            };
-
             let server_spawn = Arc::clone(&self.server);
             let trigger_plugins_spawn = Arc::clone(&self.triggers);
-            tokio::spawn(Http::new().serve_connection(stream, service::service_fn(move |req| {
-                let server_box = Arc::clone(&server_spawn);
-                let trigger_plugins_box = Arc::clone(&trigger_plugins_spawn);
+            if let Some(ref mut acceptor) = tls_acceptor {
+                tokio::spawn(acceptor.accept(sock).map_err(|e| {
+                    error!("{}", e);
+                    ()
+                }).and_then(|tls_stream| {
+                    Http::new().serve_connection(tls_stream, service::service_fn(move |req| {
+                        let server_box = Arc::clone(&server_spawn);
+                        let trigger_plugins_box = Arc::clone(&trigger_plugins_spawn);
 
-                Self::service(req, server_box, trigger_plugins_box)
-            })).map_err(|e| {
-                error!("{}", e);
-                ()
-            }));
+                        Self::service(req, server_box, trigger_plugins_box)
+                    })).map_err(|e| {
+                        error!("{}", e);
+                        ()
+                    })
+                }));
+            } else {
+                tokio::spawn(Http::new().serve_connection(sock, service::service_fn(move |req| {
+                    let server_box = Arc::clone(&server_spawn);
+                    let trigger_plugins_box = Arc::clone(&trigger_plugins_spawn);
+
+                    Self::service(req, server_box, trigger_plugins_box)
+                })).map_err(|e| {
+                    error!("{}", e);
+                    ()
+                }));
+            }
             Ok(())
         }).map_err(|e| {
             error!("{}", e);
