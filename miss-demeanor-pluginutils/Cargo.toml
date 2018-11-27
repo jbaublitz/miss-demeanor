@@ -16,4 +16,4 @@ name = "missdemeanor"
 crate-type = ["lib", "staticlib"]
 
 [dependencies]
-libc = "*"
+libc = "0.2.44"
