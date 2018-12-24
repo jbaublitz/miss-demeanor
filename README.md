@@ -9,14 +9,8 @@ multithreading concerns for you. It handles
 requests quickly, statelessly, and is specifically designed
 to avoid deadlocks.
 3. miss-demeanor is pluggable so you are the maker of your
-own workflow here. Whatever you can do in a language that can
-export C ABI compatible function symbols, you can do in a
-miss-demeanor plugin. More simply, this means that C,
-Rust and Golang are all supported languages for plugins.
-4. The plugin interface is flexible and dead simple. Define
-a function `trigger` that takes a pointer to an HTTP request
-and returns an integer and build anything else you need around
-it.
+own workflow here.
+4. The plugin interface is flexible and dead simple.
 5. See 1. It is still the most compelling reason.
 
 ## Building miss-demeanor
