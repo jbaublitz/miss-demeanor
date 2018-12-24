@@ -41,10 +41,12 @@ The config file is written in TOML.
 Here is a sample config file with some comment explanations:
 
 ```
+trigger_type = "c_abi" # Can also be "interpreted"
+
 [server]
 server_type = "webhook" # Can also be "unix_socket"
 listen_addr = "127.0.0.1:8080" # Must be in the format IP:PORT
-use_tls = false # You probably want this on unless you are running it over localhost - must pass -p and -f on CLI when this is enabled
+use_tls = false # You probably want this on unless you are running it over localhost - must pass -f on CLI when this is enabled
 
 # One server endpoint
 [[server.endpoints]]
@@ -72,19 +74,22 @@ How do you actually write a plugin for miss-demeanor though?
 First check out `miss-demeanor/example-plugins/` for code
 examples.
 
-The longer answer is this: a plugin for miss-demeanor is
-defined as any dynamic library (.so file on Linux for example)
+The longer answer is this: a plugin can be one of two formats.
+
+* It can be defined as any dynamic library (.so file on Linux for example)
 that exports a C ABI compatible function symbol
 (C ABI compatible simply means that it follows C calling
 convention, etc. - that at a binary level it is
-indistinguishable from C binaries) named `trigger`
-with the C signature:
+indistinguishable from C binaries) named `trigger`. To use this feature, set trigger type
+to `c_abi`.
+
+C function signature:
 
 ```
 int trigger(void *http_request);
 ```
 
-or Rust signature:
+Rust function signature:
 
 ```
 fn trigger(http_request: *const libc::c_void) -> libc::c_int;
@@ -125,8 +130,34 @@ Rust example:
 ```
 extern crate libc;
 
+extern "C" {
+    fn request_get_method(request: *const libc::c_void) -> *const libc::c_char;
+}
+
 #[no_mangle]
 pub fn trigger(http_request: *const libc::c_void) -> libc::c_int {
-  println!("{}", request_get_method(http_request));
+    let method = match unsafe { CStr::from_ptr(request_get_method(request)) }.to_str() {
+        Ok(b) => b,
+        Err(e) => {
+            println!("{}", e);
+            return 1;
+        },
+    };
+    println!("{}", method);
 }
+```
+
+* It can be defined as an interpreted script with a shebang at the beginning. To use this feature,
+set trigger type to `interpreted`.
+
+Python example:
+
+```
+#!/usr/bin/python
+
+import sys
+
+method = sys.argv[1]
+
+print(method)
 ```

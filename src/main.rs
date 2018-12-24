@@ -26,6 +26,9 @@ use std::fs::File;
 use std::io::Read;
 use std::process;
 
+use config::TriggerType;
+use plugins::{CABIPlugin,InterpretedPlugin};
+
 pub struct Args {
     pub use_tls: webhook::UseTls,
     pub config_path: String,
@@ -79,18 +82,26 @@ fn main() {
         }
     };
 
-    let server = match webhook::WebhookServer::new(use_tls, config) {
-        Ok(ws) => ws,
-        Err(e) => {
-            error!("{}", e);
-            process::exit(1);
-        },
-    };
-    match server.serve() {
-        Ok(()) => (),
-        Err(e) => {
-            error!("{}", e);
-            process::exit(1);
-        }
-    };
+    if let TriggerType::CABI = config.trigger_type {
+        match webhook::WebhookServer::<CABIPlugin>::new(use_tls, config)
+                .and_then(|server| server.serve()) {
+            Ok(ws) => ws,
+            Err(e) => {
+                error!("{}", e);
+                process::exit(1);
+            },
+        };
+    } else if let TriggerType::Interpreted = config.trigger_type {
+        match webhook::WebhookServer::<InterpretedPlugin>::new(use_tls, config)
+                .and_then(|server| server.serve()) {
+            Ok(ws) => ws,
+            Err(e) => {
+                error!("{}", e);
+                process::exit(1);
+            },
+        };
+    } else {
+        error!("Unrecognized trigger type: {}", config.trigger_type);
+        process::exit(1);
+    }
 }

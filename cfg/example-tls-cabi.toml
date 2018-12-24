@@ -1,0 +1,14 @@
+trigger_type = "c_abi"
+
+[server]
+server_type = "webhook"
+listen_addr = "127.0.0.1:443"
+use_tls = true
+
+[[server.endpoints]]
+path = "/merged"
+trigger_name = "github-merged"
+
+[[triggers]]
+name = "github-merged"
+plugin_path = "./example-plugins/golang/github-merged.so"

@@ -1,7 +1,9 @@
+use std::borrow::Borrow;
 use std::collections::{HashMap,HashSet};
 use std::error::Error;
 use std::ffi::CString;
 use std::fmt::{Debug,Display};
+use std::hash::Hash;
 use std::io;
 use std::sync::Arc;
 
@@ -18,7 +20,7 @@ use tokio_tls::TlsAcceptor;
 
 use config::{self,Server,TomlConfig};
 use err::DemeanorError;
-use plugins::{Plugin,PluginError};
+use plugins::{NewPlugin,Plugin,PluginError};
 
 mod listener;
 use self::listener::Listener;
@@ -50,13 +52,14 @@ impl TlsIdentity {
     }
 }
 
-pub struct WebhookServer {
+pub struct WebhookServer<P> {
     identity: Option<TlsIdentity>,
     server: Arc<Server>,
-    triggers: Arc<HashSet<Plugin>>,
+    triggers: Arc<HashSet<P>>,
 }
 
-impl WebhookServer {
+impl<P> WebhookServer<P> where P: 'static + NewPlugin + Plugin + Eq + Hash + Borrow<String> + Send +
+        Sync {
     pub fn new(use_tls: UseTls, mut toml_config: TomlConfig) -> Result<Self, Box<Error>> {
         let identity = match use_tls {
             UseTls::Yes(identity) => Some(identity),
@@ -65,7 +68,7 @@ impl WebhookServer {
 
         let mut trigger_plugins_hs = HashSet::new();
         for trigger in toml_config.triggers.drain() {
-            trigger_plugins_hs.insert(Plugin::new(trigger)?);
+            trigger_plugins_hs.insert(P::new(trigger)?);
         }
 
         let trigger_plugins = Arc::new(trigger_plugins_hs);
@@ -75,7 +78,7 @@ impl WebhookServer {
     }
 
     fn service(req: Request<Body>, server_box: Arc<Server>,
-               trigger_plugins_box: Arc<HashSet<Plugin>>)
+               trigger_plugins_box: Arc<HashSet<P>>)
             -> Box<Future<Item=Response<Body>, Error=PluginError> + Send> {
         let (parts, body) = req.into_parts();
         Box::new(body.concat2().map_err(|e| {

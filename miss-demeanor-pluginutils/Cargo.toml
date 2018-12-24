@@ -1,6 +1,6 @@
 [package]
 name = "miss-demeanor-pluginutils"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
 description = "Library for use in miss-demeanor plugins"
 license = "BSD-3-Clause"
@@ -17,3 +17,4 @@ crate-type = ["lib", "staticlib"]
 
 [dependencies]
 libc = "0.2.44"
+serde_json = "*"

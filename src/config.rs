@@ -1,6 +1,7 @@
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::error::Error;
+use std::fmt::{self,Display};
 use std::fs::File;
 use std::hash::{Hash,Hasher};
 use std::io::Read;
@@ -10,24 +11,6 @@ use toml;
 
 pub trait PluginConfig {
     fn get_plugin_path(&self) -> &str;
-}
-
-#[derive(Deserialize,PartialEq,Eq)]
-#[serde(from="String")]
-pub enum RetryStrategy {
-    Linear,
-    Exponential,
-    UnknownStrategy,
-}
-
-impl From<String> for RetryStrategy {
-    fn from(v: String) -> Self {
-        match v.as_str() {
-            "linear" => RetryStrategy::Linear,
-            "exponential" => RetryStrategy::Exponential,
-            _ => RetryStrategy::UnknownStrategy,
-        }
-    }
 }
 
 #[derive(Deserialize,PartialEq,Eq)]
@@ -98,8 +81,37 @@ impl Hash for Trigger {
     }
 }
 
+impl From<String> for TriggerType {
+    fn from(v: String) -> Self {
+        match v.as_str() {
+            "c_abi" => TriggerType::CABI,
+            "interpreted" => TriggerType::Interpreted,
+            _ => TriggerType::UnknownTriggerType(v),
+        }
+    }
+}
+
+impl Display for TriggerType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            TriggerType::CABI => write!(f, "C ABI"),
+            TriggerType::Interpreted => write!(f, "Interpreted"),
+            TriggerType::UnknownTriggerType(ref s) => write!(f, "{}", s),
+        }
+    }
+}
+
+#[derive(Deserialize,PartialEq,Eq)]
+#[serde(from="String")]
+pub enum TriggerType {
+    CABI,
+    Interpreted,
+    UnknownTriggerType(String),
+}
+
 #[derive(Deserialize)]
 pub struct TomlConfig {
+    pub trigger_type: TriggerType,
     pub server: Server,
     pub triggers: HashSet<Trigger>,
 }

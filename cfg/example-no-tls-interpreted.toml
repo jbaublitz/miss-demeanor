@@ -1,7 +1,9 @@
+trigger_type = "interpreted"
+
 [server]
 server_type = "webhook"
-listen_addr = "127.0.0.1:443"
-use_tls = true
+listen_addr = "127.0.0.1:8080"
+use_tls = false
 
 [[server.endpoints]]
 path = "/merged"
@@ -9,4 +11,4 @@ trigger_name = "github-merged"
 
 [[triggers]]
 name = "github-merged"
-plugin_path = "./example-plugins/golang/github-merged.so"
+plugin_path = "./example-plugins/python/github-merged.py"
