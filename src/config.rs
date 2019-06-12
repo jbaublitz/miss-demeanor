@@ -116,7 +116,7 @@ pub struct TomlConfig {
     pub triggers: HashSet<Trigger>,
 }
 
-pub fn parse_config(file_path: String) -> Result<TomlConfig, Box<Error>> {
+pub fn parse_config(file_path: String) -> Result<TomlConfig, Box<dyn Error>> {
     let mut file = File::open(file_path)?;
     let mut file_string = String::new();
     file.read_to_string(&mut file_string)?;

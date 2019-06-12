@@ -34,7 +34,7 @@ pub struct Args {
     pub config_path: String,
 }
 
-fn parse_opts() -> Result<(webhook::UseTls, String), Box<Error>> {
+fn parse_opts() -> Result<(webhook::UseTls, String), Box<dyn Error>> {
     let args = env::args().collect::<Vec<String>>();
     let mut options = getopts::Options::new();
     let matches = options.optopt("f", "identity-file", "Path to SSL pkcs12 identity file", "FILE_PATH")

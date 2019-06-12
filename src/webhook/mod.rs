@@ -60,7 +60,7 @@ pub struct WebhookServer<P> {
 
 impl<P> WebhookServer<P> where P: 'static + NewPlugin + Plugin + Eq + Hash + Borrow<String> + Send +
         Sync {
-    pub fn new(use_tls: UseTls, mut toml_config: TomlConfig) -> Result<Self, Box<Error>> {
+    pub fn new(use_tls: UseTls, mut toml_config: TomlConfig) -> Result<Self, Box<dyn Error>> {
         let identity = match use_tls {
             UseTls::Yes(identity) => Some(identity),
             UseTls::No => None,
@@ -79,7 +79,7 @@ impl<P> WebhookServer<P> where P: 'static + NewPlugin + Plugin + Eq + Hash + Bor
 
     fn service(req: Request<Body>, server_box: Arc<Server>,
                trigger_plugins_box: Arc<HashSet<P>>)
-            -> Box<Future<Item=Response<Body>, Error=PluginError> + Send> {
+            -> Box<dyn Future<Item=Response<Body>, Error=PluginError> + Send> {
         let (parts, body) = req.into_parts();
         Box::new(body.concat2().map_err(|e| {
             PluginError::new(500, e)
@@ -143,7 +143,7 @@ impl<P> WebhookServer<P> where P: 'static + NewPlugin + Plugin + Eq + Hash + Bor
         }))
     }
 
-    fn listen<L, S, C, E>(self) -> Result<(), Box<Error>>
+    fn listen<L, S, C, E>(self) -> Result<(), Box<dyn Error>>
             where L: Listener<S, C, E>, C: 'static + AsyncRead + AsyncWrite + Debug + Send,
                   S: 'static + Stream<Item=C> + Send,
                   S::Error: Display + Send,
@@ -194,7 +194,7 @@ impl<P> WebhookServer<P> where P: 'static + NewPlugin + Plugin + Eq + Hash + Bor
     }
 
     pub fn serve(self)
-            -> Result<(), Box<Error>> {
+            -> Result<(), Box<dyn Error>> {
         match self.server.server_type {
             config::ServerType::Webhook => {
                 self.listen::<TcpListener, net::tcp::Incoming, TcpStream, io::Error>()?
