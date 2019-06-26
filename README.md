@@ -1,5 +1,5 @@
 # miss-demeanor
-An audit compliance checker with a plugin interface
+An webhook-driven executor with a plugin interface designed for audit compliance
 
 ## Why miss-demeanor?
 1. The name is clever and Missy Elliott is great.
