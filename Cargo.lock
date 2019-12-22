@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "miss-demeanor"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "env_logger 0.5.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
