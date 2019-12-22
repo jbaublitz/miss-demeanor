@@ -28,5 +28,5 @@ tokio-tls = "0.2.0"
 toml = "0.4.8"
 
 [dependencies.miss-demeanor-pluginutils]
-version = "0.2.0"
+version = "0.3.0"
 path = "./miss-demeanor-pluginutils"
