@@ -1,13 +1,13 @@
 use std::borrow::Borrow;
-use std::hash::{Hash,Hasher};
+use std::hash::{Hash, Hasher};
 use std::io;
 
 use libc;
-use libloading::{Library,Symbol};
+use libloading::{Library, Symbol};
 use missdemeanor::CRequest;
 
-use super::{NewPlugin,Plugin};
 use super::err::PluginError;
+use super::{NewPlugin, Plugin};
 use config::Trigger;
 
 pub struct CABIPlugin {
@@ -26,22 +26,26 @@ impl NewPlugin for CABIPlugin {
 
 impl Plugin for CABIPlugin {
     fn run_trigger(&self, request: CRequest) -> Result<(), PluginError> {
-        let func: Symbol<unsafe extern fn(*const CRequest) -> libc::c_int> = unsafe { self.lib.get(b"trigger\0") }.map_err(|e| {
-            error!("{}", e);
-            PluginError::new(500, "Failed to find handler")
-        })?;
+        let func: Symbol<unsafe extern "C" fn(*const CRequest) -> libc::c_int> =
+            unsafe { self.lib.get(b"trigger\0") }.map_err(|e| {
+                error!("{}", e);
+                PluginError::new(500, "Failed to find handler")
+            })?;
         match unsafe { func(&request as *const CRequest) } {
             i if i == 0 => Ok(()),
             _ => {
                 error!("Plugin exited unsuccessfully");
                 Err(PluginError::new(500, "Internal server error"))
-            },
+            }
         }
     }
 }
 
 impl Hash for CABIPlugin {
-    fn hash<H>(&self, hasher: &mut H) where H: Hasher {
+    fn hash<H>(&self, hasher: &mut H)
+    where
+        H: Hasher,
+    {
         self.config.hash(hasher)
     }
 }

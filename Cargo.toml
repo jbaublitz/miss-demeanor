@@ -1,6 +1,6 @@
 [package]
 name = "miss-demeanor"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
 description = "Fast, parallel, pluggable process compliance checker"
 license = "BSD-3-Clause"

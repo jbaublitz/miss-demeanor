@@ -27,7 +27,7 @@ use std::io::Read;
 use std::process;
 
 use config::TriggerType;
-use plugins::{CABIPlugin,InterpretedPlugin};
+use plugins::{CABIPlugin, InterpretedPlugin};
 
 pub struct Args {
     pub use_tls: webhook::UseTls,
@@ -37,12 +37,21 @@ pub struct Args {
 fn parse_opts() -> Result<(webhook::UseTls, String), Box<dyn Error>> {
     let args = env::args().collect::<Vec<String>>();
     let mut options = getopts::Options::new();
-    let matches = options.optopt("f", "identity-file", "Path to SSL pkcs12 identity file", "FILE_PATH")
+    let matches = options
+        .optopt(
+            "f",
+            "identity-file",
+            "Path to SSL pkcs12 identity file",
+            "FILE_PATH",
+        )
         .optopt("c", "config-path", "Path to config file", "PATH")
         .optflag("h", "help", "Print help text and exit")
         .parse(args[1..].iter())?;
     if matches.opt_present("h") {
-        println!("{}", options.usage("USAGE: miss-demeanor [-f PASSWORD] [-f FILE_PATH] [-c PATH]"));
+        println!(
+            "{}",
+            options.usage("USAGE: miss-demeanor [-f PASSWORD] [-f FILE_PATH] [-c PATH]")
+        );
         process::exit(0);
     }
     let use_tls = match (matches.opt_str("f"), env::var("PKCS12_PASSWORD")) {
@@ -51,7 +60,7 @@ fn parse_opts() -> Result<(webhook::UseTls, String), Box<dyn Error>> {
             let mut pkcs12 = Vec::new();
             file_handle.read_to_end(&mut pkcs12)?;
             webhook::UseTls::Yes(webhook::TlsIdentity::new(pkcs12, pw))
-        },
+        }
         (_, _) => webhook::UseTls::No,
     };
     let args = (
@@ -60,13 +69,15 @@ fn parse_opts() -> Result<(webhook::UseTls, String), Box<dyn Error>> {
             let path = "/etc/miss-demeanor/config.toml";
             info!("Defaulting to {}", path);
             path.to_string()
-        })
+        }),
     );
     Ok(args)
 }
 
 fn main() {
-    env_logger::Builder::new().filter_level(log::LevelFilter::Info).init();
+    env_logger::Builder::new()
+        .filter_level(log::LevelFilter::Info)
+        .init();
     let (use_tls, config_path) = match parse_opts() {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -84,21 +95,23 @@ fn main() {
 
     if let TriggerType::CABI = config.trigger_type {
         match webhook::WebhookServer::<CABIPlugin>::new(use_tls, config)
-                .and_then(|server| server.serve()) {
+            .and_then(|server| server.serve())
+        {
             Ok(ws) => ws,
             Err(e) => {
                 error!("{}", e);
                 process::exit(1);
-            },
+            }
         };
     } else if let TriggerType::Interpreted = config.trigger_type {
         match webhook::WebhookServer::<InterpretedPlugin>::new(use_tls, config)
-                .and_then(|server| server.serve()) {
+            .and_then(|server| server.serve())
+        {
             Ok(ws) => ws,
             Err(e) => {
                 error!("{}", e);
                 process::exit(1);
-            },
+            }
         };
     } else {
         error!("Unrecognized trigger type: {}", config.trigger_type);

@@ -1,9 +1,9 @@
 use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::error::Error;
-use std::fmt::{self,Display};
+use std::fmt::{self, Display};
 use std::fs::File;
-use std::hash::{Hash,Hasher};
+use std::hash::{Hash, Hasher};
 use std::io::Read;
 
 use serde::Deserialize;
@@ -13,8 +13,8 @@ pub trait PluginConfig {
     fn get_plugin_path(&self) -> &str;
 }
 
-#[derive(Deserialize,PartialEq,Eq)]
-#[serde(from="String")]
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(from = "String")]
 pub enum ServerType {
     Webhook,
     UnixSocket,
@@ -31,7 +31,7 @@ impl From<String> for ServerType {
     }
 }
 
-#[derive(Deserialize,PartialEq,Eq)]
+#[derive(Deserialize, PartialEq, Eq)]
 pub struct Server {
     pub server_type: ServerType,
     pub listen_addr: String,
@@ -39,7 +39,7 @@ pub struct Server {
     pub endpoints: HashSet<Endpoint>,
 }
 
-#[derive(Deserialize,PartialEq,Eq)]
+#[derive(Deserialize, Eq)]
 pub struct Endpoint {
     pub path: String,
     pub trigger_name: String,
@@ -51,13 +51,22 @@ impl Borrow<String> for Endpoint {
     }
 }
 
+impl PartialEq<Endpoint> for Endpoint {
+    fn eq(&self, rhs: &Endpoint) -> bool {
+        self.path == rhs.path
+    }
+}
+
 impl Hash for Endpoint {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
         self.path.hash(state)
     }
 }
 
-#[derive(Deserialize,PartialEq,Eq)]
+#[derive(Deserialize, Eq)]
 pub struct Trigger {
     pub name: String,
     pub plugin_path: String,
@@ -75,8 +84,17 @@ impl Borrow<String> for Trigger {
     }
 }
 
+impl PartialEq<Trigger> for Trigger {
+    fn eq(&self, rhs: &Trigger) -> bool {
+        self.name == rhs.name
+    }
+}
+
 impl Hash for Trigger {
-    fn hash<H>(&self, state: &mut H) where H: Hasher {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
         self.name.hash(state)
     }
 }
@@ -101,8 +119,8 @@ impl Display for TriggerType {
     }
 }
 
-#[derive(Deserialize,PartialEq,Eq)]
-#[serde(from="String")]
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(from = "String")]
 pub enum TriggerType {
     CABI,
     Interpreted,

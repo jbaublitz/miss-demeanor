@@ -1,14 +1,14 @@
 use std::borrow::Borrow;
-use std::hash::{Hash,Hasher};
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::process::Command;
 
 use missdemeanor::CRequest;
 
-use config::{PluginConfig,Trigger};
+use config::{PluginConfig, Trigger};
 
-use super::{NewPlugin,Plugin};
 use super::err::PluginError;
+use super::{NewPlugin, Plugin};
 
 pub struct InterpretedPlugin {
     cmd: String,
@@ -18,51 +18,60 @@ pub struct InterpretedPlugin {
 impl NewPlugin for InterpretedPlugin {
     fn new(config: Trigger) -> Result<Self, io::Error> {
         Ok(InterpretedPlugin {
-             cmd: config.get_plugin_path().to_string(),
-             config,
+            cmd: config.get_plugin_path().to_string(),
+            config,
         })
     }
 }
 
 impl Plugin for InterpretedPlugin {
     fn run_trigger(&self, request: CRequest) -> Result<(), PluginError> {
-        let mut cmd = Command::new(self.cmd.as_str()).arg(request.get_method().map_err(|e| {
-            error!("{}", e);
-            PluginError::new(400, "Bad method")
-        })?).arg(request.get_uri().map_err(|e| {
-            error!("{}", e);
-            PluginError::new(400, "Bad URI")
-        })?).arg(request.get_headers().map_err(|e| {
-            error!("{}", e);
-            PluginError::new(400, "Bad headers")
-        })?).arg(request.get_body().map_err(|e| {
-            error!("{}", e);
-            PluginError::new(400, "Bad body")
-        })?).spawn().map_err(|e| {
-            error!("{}", e);
-            PluginError::new(500, "Internal server error")
-        })?;
+        let mut cmd = Command::new(self.cmd.as_str())
+            .arg(request.get_method().map_err(|e| {
+                error!("{}", e);
+                PluginError::new(400, "Bad method")
+            })?)
+            .arg(request.get_uri().map_err(|e| {
+                error!("{}", e);
+                PluginError::new(400, "Bad URI")
+            })?)
+            .arg(request.get_headers().map_err(|e| {
+                error!("{}", e);
+                PluginError::new(400, "Bad headers")
+            })?)
+            .arg(request.get_body().map_err(|e| {
+                error!("{}", e);
+                PluginError::new(400, "Bad body")
+            })?)
+            .spawn()
+            .map_err(|e| {
+                error!("{}", e);
+                PluginError::new(500, "Internal server error")
+            })?;
         let status = cmd.wait();
         match status.map(|s| s.code()) {
-            Ok(Some(0)) => return Ok(()),
+            Ok(Some(0)) => Ok(()),
             Ok(Some(_)) => {
                 error!("Plugin exited unsuccessfully");
-                return Err(PluginError::new(500, "Internal server error"));
-            },
+                Err(PluginError::new(500, "Internal server error"))
+            }
             Ok(None) => {
                 error!("No status code returned");
-                return Err(PluginError::new(500, "Internal server error"));
-            },
+                Err(PluginError::new(500, "Internal server error"))
+            }
             Err(e) => {
                 error!("{}", e);
-                return Err(PluginError::new(500, "Internal server error"));
-            },
+                Err(PluginError::new(500, "Internal server error"))
+            }
         }
     }
 }
 
 impl Hash for InterpretedPlugin {
-    fn hash<H>(&self, hasher: &mut H) where H: Hasher {
+    fn hash<H>(&self, hasher: &mut H)
+    where
+        H: Hasher,
+    {
         self.config.hash(hasher)
     }
 }

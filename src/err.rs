@@ -1,11 +1,14 @@
 use std::error::Error;
-use std::fmt::{self,Display};
+use std::fmt::{self, Display};
 
 #[derive(Debug)]
 pub struct DemeanorError(String);
 
 impl DemeanorError {
-    pub fn new<T>(msg: T) -> Self where T: Display {
+    pub fn new<T>(msg: T) -> Self
+    where
+        T: Display,
+    {
         DemeanorError(msg.to_string())
     }
 }
@@ -16,5 +19,4 @@ impl Display for DemeanorError {
     }
 }
 
-impl Error for DemeanorError {
-}
+impl Error for DemeanorError {}
