@@ -11,3 +11,4 @@
 Dockerfile
 
 example-plugins/rust/Cargo.lock
+*.swp

@@ -1,7 +1,7 @@
 package main
 
 // #include "trigger.h"
-// #cgo LDFLAGS: -L. -lmissdemeanor
+// #cgo LDFLAGS: -L. -lmissdemeanor -ldl
 import "C"
 
 import (

@@ -1,35 +1,35 @@
-use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
-use std::error::Error;
-use std::ffi::CString;
-use std::fmt::{Debug, Display};
-use std::hash::Hash;
-use std::io;
-use std::sync::Arc;
+mod listener;
+mod tcp;
+mod unix;
 
-use hyper::server::conn::Http;
-use hyper::service;
-use hyper::{Body, Request, Response};
-use missdemeanor::CRequest;
-use native_tls;
-use tokio;
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::net::{self, TcpStream, UnixStream};
-use tokio::prelude::{Future, Stream};
+use std::{
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+    error::Error,
+    ffi::CString,
+    fmt::Debug,
+    hash::Hash,
+    io,
+    marker::Unpin,
+    sync::Arc,
+};
+
+use futures_util::stream::StreamExt;
+use hyper::{body::to_bytes, server::conn::Http, service, Body, Request, Response};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::{TcpListener, TcpStream, UnixListener, UnixStream},
+};
 use tokio_tls::TlsAcceptor;
 
-use config::{self, Server, TomlConfig};
-use err::DemeanorError;
-use plugins::{NewPlugin, Plugin, PluginError};
+use missdemeanor::CRequest;
 
-mod listener;
-use self::listener::Listener;
-
-mod tcp;
-use self::tcp::TcpListener;
-
-mod unix;
-use self::unix::UnixListener;
+use crate::{
+    config::{self, Server, TomlConfig},
+    err::DemeanorError,
+    plugins::{NewPlugin, Plugin, PluginError},
+    webhook::listener::Listener,
+};
 
 pub enum UseTls {
     Yes(TlsIdentity),
@@ -82,85 +82,80 @@ where
         })
     }
 
-    fn service(
+    async fn service(
         req: Request<Body>,
         server_box: Arc<Server>,
         trigger_plugins_box: Arc<HashSet<P>>,
-    ) -> Box<dyn Future<Item = Response<Body>, Error = PluginError> + Send> {
+    ) -> Result<Response<Body>, PluginError> {
         let (parts, body) = req.into_parts();
-        Box::new(
-            body.concat2()
-                .map_err(|e| PluginError::new(500, e))
-                .and_then(move |b| {
-                    let method = CString::new(parts.method.as_str()).map_err(|e| {
-                        error!("{}", e);
-                        PluginError::new(400, "Invalid method")
-                    })?;
+        let body = to_bytes(body).await.map_err(|e| {
+            error!("{}", e);
+            PluginError::new(500, "Failed to get request body")
+        })?;
+        let method = CString::new(parts.method.as_str()).map_err(|e| {
+            error!("{}", e);
+            PluginError::new(400, "Invalid method")
+        })?;
 
-                    let uri = parts.uri.to_string();
-                    let name = server_box
-                        .endpoints
-                        .get(&uri)
-                        .map(|e| &e.trigger_name)
-                        .ok_or_else(|| {
-                            error!("Failed to find endpoint");
-                            PluginError::new(404, "Endpoint not found")
-                        })?;
-                    let uri_cstring = CString::new(uri).map_err(|e| {
-                        error!("{}", e);
-                        PluginError::new(400, "Invalid path")
-                    })?;
+        let uri = parts.uri.to_string();
+        let name = server_box
+            .endpoints
+            .get(&uri)
+            .map(|e| &e.trigger_name)
+            .ok_or_else(|| {
+                error!("Failed to find endpoint");
+                PluginError::new(404, "Endpoint not found")
+            })?;
+        let uri_cstring = CString::new(uri).map_err(|e| {
+            error!("{}", e);
+            PluginError::new(400, "Invalid path")
+        })?;
 
-                    let mut headers = HashMap::new();
-                    for (header, value) in &parts.headers {
-                        let header_cstring = CString::new(header.to_string()).map_err(|e| {
-                            error!("{}", e);
-                            PluginError::new(400, "Invalid header")
-                        })?;
-                        let val_str = value.to_str().map_err(|e| {
-                            error!("{}", e);
-                            PluginError::new(400, "Invalid header value")
-                        })?;
-                        let val_cstring = CString::new(val_str).map_err(|e| {
-                            error!("{}", e);
-                            PluginError::new(400, "Invalid header value")
-                        })?;
-                        headers.insert(header_cstring, val_cstring);
-                    }
+        let mut headers = HashMap::new();
+        for (header, value) in &parts.headers {
+            let header_cstring = CString::new(header.to_string()).map_err(|e| {
+                error!("{}", e);
+                PluginError::new(400, "Invalid header")
+            })?;
+            let val_str = value.to_str().map_err(|e| {
+                error!("{}", e);
+                PluginError::new(400, "Invalid header value")
+            })?;
+            let val_cstring = CString::new(val_str).map_err(|e| {
+                error!("{}", e);
+                PluginError::new(400, "Invalid header value")
+            })?;
+            headers.insert(header_cstring, val_cstring);
+        }
 
-                    let body = CString::new(b.to_vec()).map_err(|e| {
-                        error!("{}", e);
-                        PluginError::new(400, "Invalid body")
-                    })?;
+        let body_cstring = CString::new(body.to_vec()).map_err(|e| {
+            error!("{}", e);
+            PluginError::new(400, "Invalid body")
+        })?;
 
-                    let crequest = CRequest {
-                        method,
-                        uri: uri_cstring,
-                        headers,
-                        body,
-                    };
+        let crequest = CRequest {
+            method,
+            uri: uri_cstring,
+            headers,
+            body: body_cstring,
+        };
 
-                    let trigger = trigger_plugins_box.get(name).ok_or_else(|| {
-                        error!("Trigger plugin {} not found", name);
-                        PluginError::new(500, "Plugin not found")
-                    })?;
-                    trigger.run_trigger(crequest).map_err(|e| {
-                        error!("Trigger plugin failed with error: {}", e);
-                        PluginError::new(500, "Trigger phase failed")
-                    })?;
+        let trigger = trigger_plugins_box.get(name).ok_or_else(|| {
+            error!("Trigger plugin {} not found", name);
+            PluginError::new(500, "Plugin not found")
+        })?;
+        trigger.run_trigger(crequest).map_err(|e| {
+            error!("Trigger plugin failed with error: {}", e);
+            PluginError::new(500, "Trigger phase failed")
+        })?;
 
-                    Ok(Response::new(Body::from("Success!")))
-                })
-                .or_else(|e| Ok(e.into_response())),
-        )
+        Ok(Response::new(Body::from("Success!")))
     }
 
-    fn listen<L, S, C, E>(self) -> Result<(), Box<dyn Error>>
+    async fn listen<L, C, E>(self) -> Result<(), Box<dyn Error>>
     where
-        L: Listener<S, C, E>,
-        C: 'static + AsyncRead + AsyncWrite + Debug + Send,
-        S: 'static + Stream<Item = C> + Send,
-        S::Error: Display + Send,
+        L: 'static + Listener<C, E> + Send,
+        C: 'static + AsyncRead + AsyncWrite + Debug + Send + Unpin,
         E: 'static + Error + Send,
     {
         let mut tls_acceptor = None;
@@ -169,71 +164,100 @@ where
             tls_acceptor = Some(TlsAcceptor::from(acceptor));
         }
 
-        let listener = L::bind(&self.server.listen_addr)?;
+        let listener = L::bind(&self.server.listen_addr).await?;
 
-        tokio::run(
-            listener
-                .for_each(move |sock| {
-                    let server_spawn = Arc::clone(&self.server);
-                    let trigger_plugins_spawn = Arc::clone(&self.triggers);
-                    if let Some(ref mut acceptor) = tls_acceptor {
-                        tokio::spawn(
-                            acceptor
-                                .accept(sock)
-                                .map_err(|e| {
-                                    error!("{}", e);
-                                })
-                                .and_then(|tls_stream| {
-                                    Http::new()
-                                        .serve_connection(
-                                            tls_stream,
-                                            service::service_fn(move |req| {
-                                                let server_box = Arc::clone(&server_spawn);
-                                                let trigger_plugins_box =
-                                                    Arc::clone(&trigger_plugins_spawn);
+        let server_for_each = Arc::clone(&self.server);
+        let trigger_plugins_for_each = Arc::clone(&self.triggers);
+        let tls_acceptor_for_each = Arc::new(tls_acceptor);
 
-                                                Self::service(req, server_box, trigger_plugins_box)
-                                            }),
-                                        )
-                                        .map_err(|e| {
-                                            error!("{}", e);
-                                        })
+        listener
+            .for_each(move |sock_result| {
+                let server_serve = Arc::clone(&server_for_each);
+                let trigger_plugins_serve = Arc::clone(&trigger_plugins_for_each);
+                let mut tls_acceptor_inner = Arc::clone(&tls_acceptor_for_each);
+
+                async move {
+                    let sock = match sock_result {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!("{}", e);
+                            return;
+                        }
+                    };
+
+                    if let Some(Some(ref mut acceptor)) = Arc::get_mut(&mut tls_acceptor_inner) {
+                        let tls_stream = match acceptor.accept(sock).await {
+                            Ok(ts) => ts,
+                            Err(e) => {
+                                error!("{}", e);
+                                return;
+                            }
+                        };
+                        let _ = Http::new()
+                            .serve_connection(
+                                tls_stream,
+                                service::service_fn(move |req| {
+                                    let server_service = Arc::clone(&server_serve);
+                                    let trigger_plugins_service =
+                                        Arc::clone(&trigger_plugins_serve);
+                                    async move {
+                                        let response: Result<Response<Body>, io::Error> =
+                                            match Self::service(
+                                                req,
+                                                server_service,
+                                                trigger_plugins_service,
+                                            )
+                                            .await
+                                            {
+                                                Ok(resp) => Ok(resp),
+                                                Err(e) => Ok(e.into_response()),
+                                            };
+                                        response
+                                    }
                                 }),
-                        );
+                            )
+                            .await
+                            .map_err(|e| error!("{}", e));
                     } else {
-                        tokio::spawn(
-                            Http::new()
-                                .serve_connection(
-                                    sock,
-                                    service::service_fn(move |req| {
-                                        let server_box = Arc::clone(&server_spawn);
-                                        let trigger_plugins_box =
-                                            Arc::clone(&trigger_plugins_spawn);
-
-                                        Self::service(req, server_box, trigger_plugins_box)
-                                    }),
-                                )
-                                .map_err(|e| {
-                                    error!("{}", e);
+                        let _ = Http::new()
+                            .serve_connection(
+                                sock,
+                                service::service_fn(move |req| {
+                                    let server_service = Arc::clone(&server_serve);
+                                    let trigger_plugins_service =
+                                        Arc::clone(&trigger_plugins_serve);
+                                    async move {
+                                        let response: Result<Response<Body>, io::Error> =
+                                            match Self::service(
+                                                req,
+                                                server_service,
+                                                trigger_plugins_service,
+                                            )
+                                            .await
+                                            {
+                                                Ok(resp) => Ok(resp),
+                                                Err(e) => Ok(e.into_response()),
+                                            };
+                                        response
+                                    }
                                 }),
-                        );
+                            )
+                            .await
+                            .map_err(|e| error!("{}", e));
                     }
-                    Ok(())
-                })
-                .map_err(|e| {
-                    error!("{}", e);
-                }),
-        );
+                }
+            })
+            .await;
         Ok(())
     }
 
-    pub fn serve(self) -> Result<(), Box<dyn Error>> {
+    pub async fn serve(self) -> Result<(), Box<dyn Error>> {
         match self.server.server_type {
             config::ServerType::Webhook => {
-                self.listen::<TcpListener, net::tcp::Incoming, TcpStream, io::Error>()?
+                self.listen::<TcpListener, TcpStream, io::Error>().await?
             }
             config::ServerType::UnixSocket => {
-                self.listen::<UnixListener, net::unix::Incoming, UnixStream, io::Error>()?
+                self.listen::<UnixListener, UnixStream, io::Error>().await?
             }
             config::ServerType::UnknownServerType => {
                 return Err(Box::new(DemeanorError::new(

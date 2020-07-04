@@ -1,13 +1,13 @@
 use std::io;
 
-use tokio::net;
+use async_trait::async_trait;
+use tokio::net::{UnixListener, UnixStream};
 
-use webhook::listener::Listener;
+use crate::webhook::listener::Listener;
 
-pub(crate) struct UnixListener(net::UnixListener);
-
-impl Listener<net::unix::Incoming, net::UnixStream, io::Error> for UnixListener {
-    fn bind(listen_addr: &str) -> Result<net::unix::Incoming, io::Error> {
-        net::UnixListener::bind(listen_addr).map(|list| list.incoming())
+#[async_trait]
+impl Listener<UnixStream, io::Error> for UnixListener {
+    async fn bind(listen_addr: &str) -> Result<Self, io::Error> {
+        UnixListener::bind(listen_addr)
     }
 }

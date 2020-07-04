@@ -1,14 +1,17 @@
-use std::borrow::Borrow;
-use std::hash::{Hash, Hasher};
-use std::io;
+use std::{
+    borrow::Borrow,
+    hash::{Hash, Hasher},
+    io,
+};
 
-use libc;
 use libloading::{Library, Symbol};
+
 use missdemeanor::CRequest;
 
-use super::err::PluginError;
-use super::{NewPlugin, Plugin};
-use config::Trigger;
+use crate::{
+    config::Trigger,
+    plugins::{err::PluginError, NewPlugin, Plugin},
+};
 
 pub struct CABIPlugin {
     lib: Library,

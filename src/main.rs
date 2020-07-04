@@ -1,19 +1,7 @@
-extern crate env_logger;
-extern crate getopts;
-extern crate hyper;
-extern crate hyper_tls;
-extern crate libc;
-extern crate libloading;
 #[macro_use]
 extern crate log;
-extern crate missdemeanor;
-extern crate native_tls;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate tokio;
-extern crate tokio_tls;
-extern crate toml;
 
 mod config;
 mod err;
@@ -74,45 +62,20 @@ fn parse_opts() -> Result<(webhook::UseTls, String), Box<dyn Error>> {
     Ok(args)
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::Builder::new()
         .filter_level(log::LevelFilter::Info)
         .init();
-    let (use_tls, config_path) = match parse_opts() {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            error!("{}", e);
-            process::exit(1);
-        }
-    };
-    let config = match config::parse_config(config_path) {
-        Ok(c) => c,
-        Err(e) => {
-            error!("{}", e);
-            process::exit(1);
-        }
-    };
+    let (use_tls, config_path) = parse_opts()?;
+    let config = config::parse_config(config_path)?;
 
     if let TriggerType::CABI = config.trigger_type {
-        match webhook::WebhookServer::<CABIPlugin>::new(use_tls, config)
-            .and_then(|server| server.serve())
-        {
-            Ok(ws) => ws,
-            Err(e) => {
-                error!("{}", e);
-                process::exit(1);
-            }
-        };
+        let server = webhook::WebhookServer::<CABIPlugin>::new(use_tls, config)?;
+        server.serve().await
     } else if let TriggerType::Interpreted = config.trigger_type {
-        match webhook::WebhookServer::<InterpretedPlugin>::new(use_tls, config)
-            .and_then(|server| server.serve())
-        {
-            Ok(ws) => ws,
-            Err(e) => {
-                error!("{}", e);
-                process::exit(1);
-            }
-        };
+        let server = webhook::WebhookServer::<InterpretedPlugin>::new(use_tls, config)?;
+        server.serve().await
     } else {
         error!("Unrecognized trigger type: {}", config.trigger_type);
         process::exit(1);

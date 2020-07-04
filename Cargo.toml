@@ -1,5 +1,6 @@
 [package]
 name = "miss-demeanor"
+edition = "2018"
 version = "0.3.0"
 authors = ["John Baublitz <john.m.baublitz@gmail.com>"]
 description = "Fast, parallel, pluggable process compliance checker"
@@ -13,9 +14,11 @@ include = [
 ]
 
 [dependencies]
+async-trait = "*"
 env_logger = "0.5.13"
+futures-util = "0.3"
 getopts = "0.2.18"
-hyper = "0.12.12"
+hyper = "0.13"
 hyper-tls = "0.3.0"
 libc = "0.2.43"
 libloading = "0.5.0"
@@ -23,9 +26,12 @@ log = "0.4.5"
 native-tls = "0.2.1"
 serde = "1.0.80"
 serde_derive = "1.0.80"
-tokio = "0.1.11"
-tokio-tls = "0.2.0"
+tokio-tls = "0.3.0"
 toml = "0.4.8"
+
+[dependencies.tokio]
+version = "0.2"
+features = ["net", "rt-threaded", "macros"]
 
 [dependencies.miss-demeanor-pluginutils]
 version = "0.3.0"

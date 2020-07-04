@@ -1,14 +1,16 @@
-use std::borrow::Borrow;
-use std::hash::{Hash, Hasher};
-use std::io;
-use std::process::Command;
+use std::{
+    borrow::Borrow,
+    hash::{Hash, Hasher},
+    io,
+    process::Command,
+};
 
 use missdemeanor::CRequest;
 
-use config::{PluginConfig, Trigger};
-
-use super::err::PluginError;
-use super::{NewPlugin, Plugin};
+use crate::{
+    config::{PluginConfig, Trigger},
+    plugins::{err::PluginError, NewPlugin, Plugin},
+};
 
 pub struct InterpretedPlugin {
     cmd: String,

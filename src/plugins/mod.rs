@@ -2,7 +2,7 @@ use std::io;
 
 use missdemeanor::CRequest;
 
-use config::Trigger;
+use crate::config::Trigger;
 
 mod err;
 pub use self::err::*;
@@ -14,9 +14,9 @@ mod interpreted;
 pub use self::interpreted::*;
 
 pub trait NewPlugin: Sized {
-    fn new(Trigger) -> Result<Self, io::Error>;
+    fn new(trigger: Trigger) -> Result<Self, io::Error>;
 }
 
 pub trait Plugin {
-    fn run_trigger(&self, CRequest) -> Result<(), PluginError>;
+    fn run_trigger(&self, request: CRequest) -> Result<(), PluginError>;
 }

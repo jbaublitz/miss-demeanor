@@ -1,18 +1,17 @@
-use std::io;
-use std::net::ToSocketAddrs;
+use std::{io, net::ToSocketAddrs};
 
-use tokio::net;
+use async_trait::async_trait;
+use tokio::net::{TcpListener, TcpStream};
 
-use webhook::listener::Listener;
+use crate::webhook::listener::Listener;
 
-pub(crate) struct TcpListener(net::TcpListener);
-
-impl Listener<net::tcp::Incoming, net::TcpStream, io::Error> for TcpListener {
-    fn bind(listen_addr: &str) -> Result<net::tcp::Incoming, io::Error> {
+#[async_trait]
+impl<'a> Listener<TcpStream, io::Error> for TcpListener {
+    async fn bind(listen_addr: &str) -> Result<Self, io::Error> {
         let sock_addr = listen_addr
             .to_socket_addrs()?
             .next()
             .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
-        net::TcpListener::bind(&sock_addr).map(|l| l.incoming())
+        TcpListener::bind(&sock_addr).await
     }
 }

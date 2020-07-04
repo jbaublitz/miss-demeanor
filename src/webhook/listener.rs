@@ -1,12 +1,17 @@
 use std::error::Error;
 
-use tokio::prelude::{AsyncRead, AsyncWrite, Stream};
+use async_trait::async_trait;
+use tokio::{
+    io::{self, AsyncRead, AsyncWrite},
+    stream::Stream,
+};
 
-pub(crate) trait Listener<S, C, E>: Sized
+#[async_trait]
+pub(crate) trait Listener<C, E>: Sized
 where
-    S: Stream<Item = C>,
+    Self: Stream<Item = io::Result<C>>,
     C: AsyncRead + AsyncWrite,
     E: Error,
 {
-    fn bind(listen_addr: &str) -> Result<S, E>;
+    async fn bind(listen_addr: &str) -> Result<Self, E>;
 }
