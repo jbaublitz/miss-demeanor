@@ -193,7 +193,7 @@ where
                                 return;
                             }
                         };
-                        let _ = Http::new()
+                        let _ = tokio::spawn(Http::new()
                             .serve_connection(
                                 tls_stream,
                                 service::service_fn(move |req| {
@@ -216,10 +216,9 @@ where
                                     }
                                 }),
                             )
-                            .await
-                            .map_err(|e| error!("{}", e));
+                        );
                     } else {
-                        let _ = Http::new()
+                        let _ = tokio::spawn(Http::new()
                             .serve_connection(
                                 sock,
                                 service::service_fn(move |req| {
@@ -242,8 +241,7 @@ where
                                     }
                                 }),
                             )
-                            .await
-                            .map_err(|e| error!("{}", e));
+                        );
                     }
                 }
             })
