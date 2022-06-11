@@ -14,11 +14,10 @@ include = [
 ]
 
 [dependencies]
-async-trait = "*"
+async-trait = "0.1"
 env_logger = "0.5.13"
-futures-util = "0.3"
+futures = "0.3"
 getopts = "0.2.18"
-hyper = "0.13"
 hyper-tls = "0.3.0"
 libc = "0.2.43"
 libloading = "0.5.0"
@@ -26,12 +25,20 @@ log = "0.4.5"
 native-tls = "0.2.1"
 serde = "1.0.80"
 serde_derive = "1.0.80"
-tokio-tls = "0.3.0"
+tokio-native-tls = "0.3.0"
 toml = "0.4.8"
 
+[dependencies.hyper]
+version = "0.14"
+features = ["server", "http2"]
+
 [dependencies.tokio]
-version = "0.2"
-features = ["net", "rt-threaded", "macros"]
+version = "1"
+features = ["net", "rt-multi-thread", "macros"]
+
+[dependencies.tokio-stream]
+version = "0.1.8"
+features = ["net"]
 
 [dependencies.miss-demeanor-pluginutils]
 version = "0.3.0"

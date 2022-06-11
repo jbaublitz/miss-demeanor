@@ -14,13 +14,14 @@ use std::{
     sync::Arc,
 };
 
-use futures_util::stream::StreamExt;
+use futures::stream::StreamExt;
 use hyper::{body::to_bytes, server::conn::Http, service, Body, Request, Response};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    net::{TcpListener, TcpStream, UnixListener, UnixStream},
+    net::{TcpStream, UnixStream},
 };
-use tokio_tls::TlsAcceptor;
+use tokio_native_tls::TlsAcceptor;
+use tokio_stream::wrappers::{TcpListenerStream, UnixListenerStream};
 
 use missdemeanor::CRequest;
 
@@ -246,10 +247,12 @@ where
     pub async fn serve(self) -> Result<(), Box<dyn Error>> {
         match self.server.server_type {
             config::ServerType::Webhook => {
-                self.listen::<TcpListener, TcpStream, io::Error>().await?
+                self.listen::<TcpListenerStream, TcpStream, io::Error>()
+                    .await?
             }
             config::ServerType::UnixSocket => {
-                self.listen::<UnixListener, UnixStream, io::Error>().await?
+                self.listen::<UnixListenerStream, UnixStream, io::Error>()
+                    .await?
             }
             config::ServerType::UnknownServerType => {
                 return Err(Box::new(DemeanorError::new(
