@@ -193,55 +193,49 @@ where
                                 return;
                             }
                         };
-                        let _ = tokio::spawn(Http::new()
-                            .serve_connection(
-                                tls_stream,
-                                service::service_fn(move |req| {
-                                    let server_service = Arc::clone(&server_serve);
-                                    let trigger_plugins_service =
-                                        Arc::clone(&trigger_plugins_serve);
-                                    async move {
-                                        let response: Result<Response<Body>, io::Error> =
-                                            match Self::service(
-                                                req,
-                                                server_service,
-                                                trigger_plugins_service,
-                                            )
-                                            .await
-                                            {
-                                                Ok(resp) => Ok(resp),
-                                                Err(e) => Ok(e.into_response()),
-                                            };
-                                        response
-                                    }
-                                }),
-                            )
-                        );
+                        let _ = tokio::spawn(Http::new().serve_connection(
+                            tls_stream,
+                            service::service_fn(move |req| {
+                                let server_service = Arc::clone(&server_serve);
+                                let trigger_plugins_service = Arc::clone(&trigger_plugins_serve);
+                                async move {
+                                    let response: Result<Response<Body>, io::Error> =
+                                        match Self::service(
+                                            req,
+                                            server_service,
+                                            trigger_plugins_service,
+                                        )
+                                        .await
+                                        {
+                                            Ok(resp) => Ok(resp),
+                                            Err(e) => Ok(e.into_response()),
+                                        };
+                                    response
+                                }
+                            }),
+                        ));
                     } else {
-                        let _ = tokio::spawn(Http::new()
-                            .serve_connection(
-                                sock,
-                                service::service_fn(move |req| {
-                                    let server_service = Arc::clone(&server_serve);
-                                    let trigger_plugins_service =
-                                        Arc::clone(&trigger_plugins_serve);
-                                    async move {
-                                        let response: Result<Response<Body>, io::Error> =
-                                            match Self::service(
-                                                req,
-                                                server_service,
-                                                trigger_plugins_service,
-                                            )
-                                            .await
-                                            {
-                                                Ok(resp) => Ok(resp),
-                                                Err(e) => Ok(e.into_response()),
-                                            };
-                                        response
-                                    }
-                                }),
-                            )
-                        );
+                        let _ = tokio::spawn(Http::new().serve_connection(
+                            sock,
+                            service::service_fn(move |req| {
+                                let server_service = Arc::clone(&server_serve);
+                                let trigger_plugins_service = Arc::clone(&trigger_plugins_serve);
+                                async move {
+                                    let response: Result<Response<Body>, io::Error> =
+                                        match Self::service(
+                                            req,
+                                            server_service,
+                                            trigger_plugins_service,
+                                        )
+                                        .await
+                                        {
+                                            Ok(resp) => Ok(resp),
+                                            Err(e) => Ok(e.into_response()),
+                                        };
+                                    response
+                                }
+                            }),
+                        ));
                     }
                 }
             })
