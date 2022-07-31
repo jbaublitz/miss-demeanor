@@ -7,7 +7,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 use crate::webhook::listener::Listener;
 
 #[async_trait]
-impl<'a> Listener<TcpStream, io::Error> for TcpListenerStream {
+impl Listener<TcpStream, io::Error> for TcpListenerStream {
     async fn bind(listen_addr: &str) -> Result<Self, io::Error> {
         let sock_addr = listen_addr
             .to_socket_addrs()?

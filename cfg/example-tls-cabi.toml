@@ -11,4 +11,4 @@ trigger_name = "github-merged"
 
 [[triggers]]
 name = "github-merged"
-plugin_path = "./example-plugins/golang/github-merged.so"
+plugin_path = "./example-plugins/rust/target/debug/libgithubmerged.so"

@@ -10,3 +10,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libc = "*"
+miss-demeanor-pluginutils = { version = "*", path = "miss-demeanor-pluginutils" }

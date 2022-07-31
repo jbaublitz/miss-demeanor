@@ -7,7 +7,6 @@ use std::hash::{Hash, Hasher};
 use std::io::Read;
 
 use serde::Deserialize;
-use toml;
 
 pub trait PluginConfig {
     fn get_plugin_path(&self) -> &str;
@@ -102,7 +101,7 @@ impl Hash for Trigger {
 impl From<String> for TriggerType {
     fn from(v: String) -> Self {
         match v.as_str() {
-            "c_abi" => TriggerType::CABI,
+            "c_abi" => TriggerType::CAbi,
             "interpreted" => TriggerType::Interpreted,
             _ => TriggerType::UnknownTriggerType(v),
         }
@@ -112,7 +111,7 @@ impl From<String> for TriggerType {
 impl Display for TriggerType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            TriggerType::CABI => write!(f, "C ABI"),
+            TriggerType::CAbi => write!(f, "C ABI"),
             TriggerType::Interpreted => write!(f, "Interpreted"),
             TriggerType::UnknownTriggerType(ref s) => write!(f, "{}", s),
         }
@@ -122,7 +121,7 @@ impl Display for TriggerType {
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(from = "String")]
 pub enum TriggerType {
-    CABI,
+    CAbi,
     Interpreted,
     UnknownTriggerType(String),
 }

@@ -30,7 +30,7 @@ toml = "0.4.8"
 
 [dependencies.hyper]
 version = "0.14.19"
-features = ["server", "http2"]
+features = ["server", "http1", "http2"]
 
 [dependencies.tokio]
 version = "1.8.4"

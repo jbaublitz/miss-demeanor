@@ -37,6 +37,12 @@ pub enum UseTls {
     No,
 }
 
+impl UseTls {
+    pub fn use_tls(&self) -> bool {
+        matches!(self, UseTls::Yes(_))
+    }
+}
+
 #[derive(Clone)]
 pub struct TlsIdentity {
     identity: Vec<u8>,
@@ -175,7 +181,7 @@ where
             .for_each(move |sock_result| {
                 let server_serve = Arc::clone(&server_for_each);
                 let trigger_plugins_serve = Arc::clone(&trigger_plugins_for_each);
-                let mut tls_acceptor_inner = Arc::clone(&tls_acceptor_for_each);
+                let tls_acceptor_inner = Arc::clone(&tls_acceptor_for_each);
 
                 async move {
                     let sock = match sock_result {
@@ -186,7 +192,7 @@ where
                         }
                     };
 
-                    if let Some(Some(ref mut acceptor)) = Arc::get_mut(&mut tls_acceptor_inner) {
+                    if let Some(ref acceptor) = *tls_acceptor_inner {
                         let tls_stream = match acceptor.accept(sock).await {
                             Ok(ts) => ts,
                             Err(e) => {

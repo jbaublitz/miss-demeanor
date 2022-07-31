@@ -12,3 +12,7 @@ Dockerfile
 
 example-plugins/rust/Cargo.lock
 *.swp
+
+cert.pem
+key.pem
+identity.pfx

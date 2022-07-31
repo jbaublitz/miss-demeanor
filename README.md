@@ -22,9 +22,13 @@ Your executable will be located at `./target/release/miss-demeanor`.
 ## Using TLS with miss-demeanor
 Currently the TLS library that miss-demeanor uses only supports a PCKS12/DER identity format.
 This is not my choice and I hope to eventually be able to support PEM identites for the server.
-That being said, there are test certs available for you to take a look at checked into the
-project that I will ensure are up to date and can be used as a first step when evaluating
-if miss-demeanor is the right solution for you.
+
+To easily generate a self-signed certificate for testing, run:
+```
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 365
+openssl pkcs12 -export -out identity.pfx -inkey key.pem -in cert.pem
+
+```
 
 The invocation is pretty simple: provide the path to `-f` for your PKCS12 identity file and use
 the environment variable `PKCS12_PASSWORD` to supply the password.
@@ -122,15 +126,11 @@ func main {}
 Rust example:
 
 ```
-extern crate libc;
-
-extern "C" {
-    fn request_get_method(request: *const libc::c_void) -> *const libc::c_char;
-}
+use missdemeanor::CRequest;
 
 #[no_mangle]
-pub fn trigger(http_request: *const libc::c_void) -> libc::c_int {
-    let method = match unsafe { CStr::from_ptr(request_get_method(request)) }.to_str() {
+pub fn trigger(http_request: *const CRequest) -> libc::c_int {
+    let method = match unsafe { request.as_ref() }.get_method() {
         Ok(b) => b,
         Err(e) => {
             println!("{}", e);

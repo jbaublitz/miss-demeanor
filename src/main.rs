@@ -8,14 +8,12 @@ mod err;
 mod plugins;
 mod webhook;
 
-use std::env;
-use std::error::Error;
-use std::fs::File;
-use std::io::Read;
-use std::process;
+use std::{env, error::Error, fs::File, io::Read, process};
 
 use config::TriggerType;
+use err::DemeanorError;
 use plugins::{CABIPlugin, InterpretedPlugin};
+use webhook::UseTls;
 
 pub struct Args {
     pub use_tls: webhook::UseTls,
@@ -64,13 +62,20 @@ fn parse_opts() -> Result<(webhook::UseTls, String), Box<dyn Error>> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::Builder::new()
-        .filter_level(log::LevelFilter::Info)
-        .init();
-    let (use_tls, config_path) = parse_opts()?;
+    env_logger::init();
+    let (mut use_tls, config_path) = parse_opts()?;
     let config = config::parse_config(config_path)?;
+    if config.server.use_tls && !use_tls.use_tls() {
+        error!("Server requires options -f for TLS identity file and PKCS12_PASSWORD environment variable");
+        return Err(
+            Box::new(DemeanorError::new("Missing required options for TLS")) as Box<dyn Error>,
+        );
+    } else if !config.server.use_tls && use_tls.use_tls() {
+        error!("Server specified no TLS but TLS CLI parameters were provided; ignoring");
+        use_tls = UseTls::No;
+    }
 
-    if let TriggerType::CABI = config.trigger_type {
+    if let TriggerType::CAbi = config.trigger_type {
         let server = webhook::WebhookServer::<CABIPlugin>::new(use_tls, config)?;
         server.serve().await
     } else if let TriggerType::Interpreted = config.trigger_type {
@@ -78,6 +83,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         server.serve().await
     } else {
         error!("Unrecognized trigger type: {}", config.trigger_type);
-        process::exit(1);
+        Err(Box::new(DemeanorError::new(format!(
+            "Unrecognized trigger type: {}",
+            config.trigger_type
+        ))))
     }
 }
