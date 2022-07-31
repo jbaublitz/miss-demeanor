@@ -2,7 +2,6 @@ use missdemeanor::CRequest;
 
 #[no_mangle]
 pub fn trigger(request: *const CRequest) -> libc::c_int {
-    println!("HERE");
     let req = match unsafe { request.as_ref() } {
         Some(r) => r,
         None => return 1,
