@@ -83,19 +83,19 @@ to `c_abi`.
 
 C function signature:
 
-```
+```c
 int trigger(void *http_request);
 ```
 
 Rust function signature:
 
-```
+```rust
 fn trigger(http_request: *const libc::c_void) -> libc::c_int;
 ```
 
 C example:
 
-```
+```c
 #include "trigger.h"
 #include <stdio.h>
 
@@ -107,7 +107,7 @@ int trigger(void *http_request) {
 
 Golang example:
 
-```
+```go
 // #include "trigger.h"
 // #cgo LDFLAGS: -lmissdemeanor -ldl
 import "C"
@@ -125,7 +125,7 @@ func main {}
 
 Rust example:
 
-```
+```rust
 use missdemeanor::CRequest;
 
 #[no_mangle]
@@ -146,7 +146,7 @@ set trigger type to `interpreted`.
 
 Python example:
 
-```
+```python
 #!/usr/bin/python
 
 import sys
