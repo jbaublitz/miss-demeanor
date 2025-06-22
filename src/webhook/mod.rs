@@ -5,17 +5,26 @@ mod unix;
 use std::{
     borrow::Borrow,
     collections::{HashMap, HashSet},
+    convert::Infallible,
     error::Error,
     ffi::CString,
     fmt::Debug,
+    future::Future,
     hash::Hash,
     io,
     marker::Unpin,
+    pin::Pin,
     sync::Arc,
 };
 
-use futures::stream::StreamExt;
-use hyper::{body::to_bytes, server::conn::Http, service, Body, Request, Response};
+use futures::StreamExt;
+use http_body_util::{BodyExt, Full};
+use hyper::{
+    body::{Bytes, Incoming},
+    server::conn::http2::Builder,
+    service::Service,
+    Request, Response,
+};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::{TcpStream, UnixStream},
@@ -59,6 +68,107 @@ impl TlsIdentity {
     }
 }
 
+async fn service<P>(
+    req: Request<Incoming>,
+    server_box: Arc<Server>,
+    trigger_plugins_box: Arc<HashSet<P>>,
+) -> Result<Response<Full<Bytes>>, PluginError>
+where
+    P: Hash + Eq + Borrow<String> + Plugin,
+{
+    let (parts, body) = req.into_parts();
+    let method = CString::new(parts.method.as_str()).map_err(|e| {
+        error!("{}", e);
+        PluginError::new(400, "Invalid method")
+    })?;
+
+    let uri = parts.uri.to_string();
+    let name = server_box
+        .endpoints
+        .get(&uri)
+        .map(|e| &e.trigger_name)
+        .ok_or_else(|| {
+            error!("Failed to find endpoint");
+            PluginError::new(404, "Endpoint not found")
+        })?;
+    let uri_cstring = CString::new(uri).map_err(|e| {
+        error!("{}", e);
+        PluginError::new(400, "Invalid path")
+    })?;
+
+    let mut headers = HashMap::new();
+    for (header, value) in &parts.headers {
+        let header_cstring = CString::new(header.to_string()).map_err(|e| {
+            error!("{}", e);
+            PluginError::new(400, "Invalid header")
+        })?;
+        let val_str = value.to_str().map_err(|e| {
+            error!("{}", e);
+            PluginError::new(400, "Invalid header value")
+        })?;
+        let val_cstring = CString::new(val_str).map_err(|e| {
+            error!("{}", e);
+            PluginError::new(400, "Invalid header value")
+        })?;
+        headers.insert(header_cstring, val_cstring);
+    }
+
+    let body_cstring = CString::new(match body.collect().await {
+        Ok(b) => b.to_bytes().to_vec(),
+        Err(e) => {
+            warn!("{e}");
+            return Err(PluginError::new(400, "Failed to receive body"));
+        }
+    })
+    .map_err(|e| {
+        error!("{}", e);
+        PluginError::new(400, "Invalid body")
+    })?;
+
+    let crequest = CRequest {
+        method,
+        uri: uri_cstring,
+        headers,
+        body: body_cstring,
+    };
+
+    let trigger = trigger_plugins_box.get(name).ok_or_else(|| {
+        error!("Trigger plugin {} not found", name);
+        PluginError::new(500, "Plugin not found")
+    })?;
+    trigger.run_trigger(crequest).map_err(|e| {
+        error!("Trigger plugin failed with error: {}", e);
+        PluginError::new(500, "Trigger phase failed")
+    })?;
+
+    Ok(Response::new(Full::new(Bytes::from("Success!"))))
+}
+
+struct WebookService<P> {
+    server: Arc<Server>,
+    plugins: Arc<HashSet<P>>,
+}
+
+impl<P> Service<Request<Incoming>> for WebookService<P>
+where
+    P: 'static + NewPlugin + Plugin + Eq + Hash + Borrow<String> + Send + Sync,
+{
+    type Response = Response<Full<Bytes>>;
+    type Error = Infallible;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn call(&self, req: Request<Incoming>) -> Self::Future {
+        let server = Arc::clone(&self.server);
+        let plugins = Arc::clone(&self.plugins);
+        Box::pin(async {
+            match service(req, server, plugins).await {
+                Ok(resp) => Ok(resp),
+                Err(e) => Ok(e.into_response()),
+            }
+        })
+    }
+}
+
 pub struct WebhookServer<P> {
     identity: Option<TlsIdentity>,
     server: Arc<Server>,
@@ -87,76 +197,6 @@ where
             server: Arc::new(toml_config.server),
             triggers: trigger_plugins,
         })
-    }
-
-    async fn service(
-        req: Request<Body>,
-        server_box: Arc<Server>,
-        trigger_plugins_box: Arc<HashSet<P>>,
-    ) -> Result<Response<Body>, PluginError> {
-        let (parts, body) = req.into_parts();
-        let body = to_bytes(body).await.map_err(|e| {
-            error!("{}", e);
-            PluginError::new(500, "Failed to get request body")
-        })?;
-        let method = CString::new(parts.method.as_str()).map_err(|e| {
-            error!("{}", e);
-            PluginError::new(400, "Invalid method")
-        })?;
-
-        let uri = parts.uri.to_string();
-        let name = server_box
-            .endpoints
-            .get(&uri)
-            .map(|e| &e.trigger_name)
-            .ok_or_else(|| {
-                error!("Failed to find endpoint");
-                PluginError::new(404, "Endpoint not found")
-            })?;
-        let uri_cstring = CString::new(uri).map_err(|e| {
-            error!("{}", e);
-            PluginError::new(400, "Invalid path")
-        })?;
-
-        let mut headers = HashMap::new();
-        for (header, value) in &parts.headers {
-            let header_cstring = CString::new(header.to_string()).map_err(|e| {
-                error!("{}", e);
-                PluginError::new(400, "Invalid header")
-            })?;
-            let val_str = value.to_str().map_err(|e| {
-                error!("{}", e);
-                PluginError::new(400, "Invalid header value")
-            })?;
-            let val_cstring = CString::new(val_str).map_err(|e| {
-                error!("{}", e);
-                PluginError::new(400, "Invalid header value")
-            })?;
-            headers.insert(header_cstring, val_cstring);
-        }
-
-        let body_cstring = CString::new(body.to_vec()).map_err(|e| {
-            error!("{}", e);
-            PluginError::new(400, "Invalid body")
-        })?;
-
-        let crequest = CRequest {
-            method,
-            uri: uri_cstring,
-            headers,
-            body: body_cstring,
-        };
-
-        let trigger = trigger_plugins_box.get(name).ok_or_else(|| {
-            error!("Trigger plugin {} not found", name);
-            PluginError::new(500, "Plugin not found")
-        })?;
-        trigger.run_trigger(crequest).map_err(|e| {
-            error!("Trigger plugin failed with error: {}", e);
-            PluginError::new(500, "Trigger phase failed")
-        })?;
-
-        Ok(Response::new(Body::from("Success!")))
     }
 
     async fn listen<L, C, E>(self) -> Result<(), Box<dyn Error>>
@@ -200,49 +240,25 @@ where
                                 return;
                             }
                         };
-                        let _ = tokio::spawn(Http::new().serve_connection(
-                            tls_stream,
-                            service::service_fn(move |req| {
-                                let server_service = Arc::clone(&server_serve);
-                                let trigger_plugins_service = Arc::clone(&trigger_plugins_serve);
-                                async move {
-                                    let response: Result<Response<Body>, io::Error> =
-                                        match Self::service(
-                                            req,
-                                            server_service,
-                                            trigger_plugins_service,
-                                        )
-                                        .await
-                                        {
-                                            Ok(resp) => Ok(resp),
-                                            Err(e) => Ok(e.into_response()),
-                                        };
-                                    response
-                                }
-                            }),
-                        ));
+                        let _ = tokio::spawn(
+                            Builder::new(hyper_util::rt::TokioExecutor::new()).serve_connection(
+                                hyper_util::rt::TokioIo::new(tls_stream),
+                                WebookService {
+                                    plugins: Arc::clone(&trigger_plugins_serve),
+                                    server: Arc::clone(&server_serve),
+                                },
+                            ),
+                        );
                     } else {
-                        let _ = tokio::spawn(Http::new().serve_connection(
-                            sock,
-                            service::service_fn(move |req| {
-                                let server_service = Arc::clone(&server_serve);
-                                let trigger_plugins_service = Arc::clone(&trigger_plugins_serve);
-                                async move {
-                                    let response: Result<Response<Body>, io::Error> =
-                                        match Self::service(
-                                            req,
-                                            server_service,
-                                            trigger_plugins_service,
-                                        )
-                                        .await
-                                        {
-                                            Ok(resp) => Ok(resp),
-                                            Err(e) => Ok(e.into_response()),
-                                        };
-                                    response
-                                }
-                            }),
-                        ));
+                        let _ = tokio::spawn(
+                            Builder::new(hyper_util::rt::TokioExecutor::new()).serve_connection(
+                                hyper_util::rt::TokioIo::new(sock),
+                                WebookService {
+                                    plugins: Arc::clone(&trigger_plugins_serve),
+                                    server: Arc::clone(&server_serve),
+                                },
+                            ),
+                        );
                     }
                 }
             })

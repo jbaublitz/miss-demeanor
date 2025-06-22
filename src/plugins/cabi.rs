@@ -21,7 +21,8 @@ pub struct CABIPlugin {
 impl NewPlugin for CABIPlugin {
     fn new(config: Trigger) -> Result<Self, io::Error> {
         Ok(CABIPlugin {
-            lib: Library::new(&config.plugin_path)?,
+            lib: unsafe { Library::new(&config.plugin_path) }
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?,
             config,
         })
     }
