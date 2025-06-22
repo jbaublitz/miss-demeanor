@@ -137,7 +137,7 @@ pub fn parse_config(file_path: String) -> Result<TomlConfig, Box<dyn Error>> {
     let mut file = File::open(file_path)?;
     let mut file_string = String::new();
     file.read_to_string(&mut file_string)?;
-    let mut deserializer = toml::Deserializer::new(file_string.as_str());
-    let config = TomlConfig::deserialize(&mut deserializer)?;
+    let deserializer = toml::Deserializer::new(file_string.as_str());
+    let config = TomlConfig::deserialize(deserializer)?;
     Ok(config)
 }
